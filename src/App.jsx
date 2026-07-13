@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router'
 import './App.css'
+import './styles/StockSearchBar.css'
 
 import AppLayout from './components/AppLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'

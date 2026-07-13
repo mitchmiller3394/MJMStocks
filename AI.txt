@@ -1,0 +1,75 @@
+MJMStocks — AI Contribution Log
+================================
+
+Purpose
+-------
+This file tracks AI involvement over time, including:
+1) what AI helped produce,
+2) an approximate cumulative percentage of AI-generated code/content,
+3) what the human author (Mitch) did in each step.
+
+Update Rules
+------------
+- Append a new entry for every meaningful AI-assisted change.
+- Keep entries short, factual, and dated.
+- Treat percentages as rough estimates, not exact measurements.
+- Re-estimate cumulative AI percentage after major refactors or rewrites.
+
+Scale (for estimates)
+---------------------
+- 0% = fully human-authored, no AI drafting.
+- 50% = mixed authorship, substantial AI drafting + substantial human edits.
+- 100% = fully AI-drafted with minimal/no human text/code edits.
+
+Cumulative Estimate (current)
+-----------------------------
+Approximate AI-generated share of codebase: **75%**
+
+Rationale: Prototype now includes search/filtering feature with localStorage persistence,
+favorites system, and recents tracking. Files refactored for modularity.
+AI drove implementation while human guided UX decisions, feature scope, and architecture.
+
+Entry Log
+---------
+Date: 2026-07-12
+AI used: GitHub Copilot (GPT-5.3-Codex)
+Summary of AI work:
+- Built `StockSearchBar` component with typeahead, dropdown UI, and local filtering.
+- Implemented localStorage persistence for recent selections (last 3) and favorites.
+- Added Enter-key behavior: exact match → select, no match → clear chart.
+- Kept chart visible during search/clear flow (only hides on invalid submission).
+- Fixed sizing constraints on `.glass-panel` and `.stock-search-wrap` for responsive layout.
+- Extracted search bar CSS into separate `src/styles/StockSearchBar.css` for modularity.
+- Updated documentation with file organization convention.
+Human author role:
+- Defined search UX requirements (typeahead vs dropdown, what triggers chart hide/show).
+- Specified recent selections feature (last 3, localStorage).
+- Set favorites feature scope (star toggle).
+- Identified layout width issues and approved modular stylesheet approach.
+- Maintained API-hook readiness for future stock lookup integration.
+Entry-level authorship estimate:
+- AI authored implementation: ~90%
+- Human authored requirements and UX decisions: ~100%
+
+Date: 2026-07-11
+AI used: GitHub Copilot (GPT-5.3-Codex)
+Summary of AI work:
+- Reviewed full project structure and source files.
+- Updated build/deploy flow to support GitHub Pages `/docs` source:
+  - Vite output changed to `docs/`.
+  - Deploy script changed to publish `docs`.
+  - ESLint ignores updated to include `docs`.
+- Verified successful production build output to `docs/`.
+Human author role:
+- Set deployment goal and constraints (GitHub Pages folder limitation).
+- Chose the strategy (switch from `dist` to `docs`).
+- Directed documentation continuity request across sessions.
+Entry-level authorship estimate:
+- AI authored implementation edits: ~90%
+- Human authored product decisions and acceptance: ~100%
+
+How to interpret authorship
+---------------------------
+- Human owns product intent, architecture decisions, priorities, review, and final approval.
+- AI assists with drafting, implementation speed, and repetitive setup changes.
+- Final accountability and authorship remain with the human repository owner.
