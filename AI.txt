@@ -23,14 +23,51 @@ Scale (for estimates)
 
 Cumulative Estimate (current)
 -----------------------------
-Approximate AI-generated share of codebase: **75%**
+Approximate AI-generated share of codebase: **78%**
 
-Rationale: Prototype now includes search/filtering feature with localStorage persistence,
-favorites system, and recents tracking. Files refactored for modularity.
-AI drove implementation while human guided UX decisions, feature scope, and architecture.
+Rationale: Core portfolio infrastructure now includes a dedicated page, drag-and-drop
+manual ordering, advanced sorting, and shared storage utilities for favorites + future
+owned positions, with architecture and UX direction set by the human author.
 
 Entry Log
 ---------
+Date: 2026-07-19 (follow-up)
+AI used: GitHub Copilot (GPT-5.3-Codex)
+Summary of AI work:
+- Added collapsible behavior to the Portfolio "Favorited Stocks" section so users can quickly reach Owned Positions without scrolling long watchlists.
+- Added collapse/expand header controls and supporting styles, while preserving sort + manual drag-and-drop behavior when expanded.
+Human author role:
+- Manually refactored `SortableStockCard` out of the Portfolio page into its own component file.
+- Requested UX update for collapsible favorites to improve navigation efficiency.
+Entry-level authorship estimate:
+- AI authored implementation: ~85%
+- Human authored architectural cleanup and UX direction: ~100%
+
+Date: 2026-07-19
+AI used: GitHub Copilot (GPT-5.3-Codex)
+Summary of AI work:
+- Installed `@dnd-kit/core`, `@dnd-kit/sortable`, and `@dnd-kit/utilities`.
+- Created new Portfolio page with:
+  - favorited-stock line-item cards,
+  - all requested sorting modes,
+  - manual click/drag sorting (when sort mode is manual),
+  - empty-state section for owned positions.
+- Added shared storage utility module for favorites/recents/manual order/owned positions.
+- Synced existing search favorites with shared storage for cross-page consistency.
+- Updated routing and navbar:
+  - added `/portfolio` route,
+  - replaced Dashboard nav link with Portfolio,
+  - retained About link.
+- Added dedicated stylesheet for Portfolio page.
+Human author role:
+- Set product direction: Portfolio as next core feature.
+- Chose UX requirements: keep About, remove Dashboard nav, include owned section now.
+- Approved dependency choice (`dnd-kit`) after implementation detail review.
+- Specified sorting breadth and extension-readiness for future buy/sell flow.
+Entry-level authorship estimate:
+- AI authored implementation: ~90%
+- Human authored requirements and acceptance decisions: ~100%
+
 Date: 2026-07-12
 AI used: GitHub Copilot (GPT-5.3-Codex)
 Summary of AI work:

@@ -6,14 +6,14 @@ function SiteHeader() {
     <Navbar expand="sm" variant="dark" className="site-header py-3">
       <Container>
         <Navbar.Brand as={NavLink} to="/" className="fw-semibold">
-          QuickTest
+          MJM Stocks
         </Navbar.Brand>
 
         <Navbar.Toggle aria-controls="main-nav" />
         <Navbar.Collapse id="main-nav">
           <Nav className="ms-auto gap-2">
-            <Nav.Link as={NavLink} to="/" end>
-              Dashboard
+            <Nav.Link as={NavLink} to="/portfolio">
+              Portfolio
             </Nav.Link>
             <Nav.Link as={NavLink} to="/about">
               About

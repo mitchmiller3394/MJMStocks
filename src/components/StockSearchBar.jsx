@@ -1,40 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
 import { MOCK_STOCKS } from '../data/mockStocks.js'
+import {
+  getFavoriteSymbols,
+  getRecentSymbols,
+  setFavoriteSymbols,
+  setRecentSymbols,
+} from '../data/portfolioStorage.js'
 
-const RECENTS_STORAGE_KEY = 'mjmstocks.recentSymbols'
-const FAVORITES_STORAGE_KEY = 'mjmstocks.favoriteSymbols'
+const stocksBySymbol = Object.fromEntries(MOCK_STOCKS.map((stock) => [stock.symbol, stock]))
 
-const stocksBySymbol = Object.fromEntries(
-  MOCK_STOCKS.map((stock) => [stock.symbol, stock]),
-)
-
-function readSymbolListFromStorage(key) {
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) {
-      return []
-    }
-
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      return []
-    }
-
-    return parsed.filter((item) => typeof item === 'string')
-  } catch {
-    return []
-  }
-}
-
-function StockSearchBar({ onSelect }) {
+function StockSearchBar({ onSelect, onFavoritesChange }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const [recentSymbols, setRecentSymbols] = useState(() =>
-    readSymbolListFromStorage(RECENTS_STORAGE_KEY),
-  )
-  const [favoriteSymbols, setFavoriteSymbols] = useState(() =>
-    readSymbolListFromStorage(FAVORITES_STORAGE_KEY),
-  )
+  const [recentSymbols, setRecentSymbolsState] = useState(() => getRecentSymbols())
+  const [favoriteSymbols, setFavoriteSymbolsState] = useState(() => getFavoriteSymbols())
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -48,18 +27,15 @@ function StockSearchBar({ onSelect }) {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(
-      RECENTS_STORAGE_KEY,
-      JSON.stringify(recentSymbols.slice(0, 3)),
-    )
+    setRecentSymbols(recentSymbols)
   }, [recentSymbols])
 
   useEffect(() => {
-    window.localStorage.setItem(
-      FAVORITES_STORAGE_KEY,
-      JSON.stringify(favoriteSymbols),
-    )
-  }, [favoriteSymbols])
+    setFavoriteSymbols(favoriteSymbols)
+    if (onFavoritesChange) {
+      onFavoritesChange(favoriteSymbols)
+    }
+  }, [favoriteSymbols, onFavoritesChange])
 
   const trimmed = query.trim()
 
@@ -86,7 +62,7 @@ function StockSearchBar({ onSelect }) {
   }
 
   function toggleFavorite(symbol) {
-    setFavoriteSymbols((prev) => {
+    setFavoriteSymbolsState((prev) => {
       if (prev.includes(symbol)) {
         return prev.filter((entry) => entry !== symbol)
       }
@@ -132,7 +108,7 @@ function StockSearchBar({ onSelect }) {
     onSelect(stock)
     setQuery(stock.symbol)
     setOpen(false)
-    setRecentSymbols((prev) => {
+    setRecentSymbolsState((prev) => {
       const withoutDuplicate = prev.filter((symbol) => symbol !== stock.symbol)
       return [stock.symbol, ...withoutDuplicate].slice(0, 3)
     })

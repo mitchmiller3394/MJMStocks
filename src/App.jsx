@@ -1,10 +1,12 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router'
 import './App.css'
 import './styles/StockSearchBar.css'
+import './styles/PortfolioPage.css'
 
 import AppLayout from './components/AppLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
 import HomePage from './pages/HomePage.jsx'
+import PortfolioPage from './pages/PortfolioPage.jsx'
 
 function App() {
   return (
@@ -12,6 +14,7 @@ function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/about" element={<AboutPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
