@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { MOCK_STOCKS } from '../data/mockStocks.js'
+import { searchUsSymbols } from '../data/finnhubClient.js'
 import {
   getFavoriteSymbols,
   getRecentSymbols,
@@ -12,6 +13,8 @@ const stocksBySymbol = Object.fromEntries(MOCK_STOCKS.map((stock) => [stock.symb
 function StockSearchBar({ onSelect, onFavoritesChange }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const [remoteResults, setRemoteResults] = useState([])
   const [recentSymbols, setRecentSymbolsState] = useState(() => getRecentSymbols())
   const [favoriteSymbols, setFavoriteSymbolsState] = useState(() => getFavoriteSymbols())
   const containerRef = useRef(null)
@@ -39,7 +42,7 @@ function StockSearchBar({ onSelect, onFavoritesChange }) {
 
   const trimmed = query.trim()
 
-  const filtered =
+  const localFiltered =
     trimmed.length === 0
       ? []
       : MOCK_STOCKS.filter(
@@ -48,14 +51,62 @@ function StockSearchBar({ onSelect, onFavoritesChange }) {
             s.name.toLowerCase().includes(trimmed.toLowerCase()),
         )
 
+  useEffect(() => {
+    if (trimmed.length === 0) {
+      setRemoteResults([])
+      setIsSearching(false)
+      return
+    }
+
+    let cancelled = false
+
+    setIsSearching(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const results = await searchUsSymbols(trimmed)
+        if (!cancelled) {
+          setRemoteResults(results)
+        }
+      } catch {
+        if (!cancelled) {
+          setRemoteResults([])
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false)
+        }
+      }
+    }, 280)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [trimmed])
+
+  const filtered =
+    trimmed.length === 0
+      ? []
+      : remoteResults.length > 0
+        ? remoteResults
+        : localFiltered
+
   const recentStocks = recentSymbols
-    .map((symbol) => stocksBySymbol[symbol])
-    .filter(Boolean)
+    .map((symbol) => stocksBySymbol[symbol] ?? { symbol, name: symbol })
+    .filter((stock) => Boolean(stock?.symbol))
 
   const hasExactMatch = MOCK_STOCKS.some(
     (s) => s.symbol.toLowerCase() === trimmed.toLowerCase(),
   )
-  const showApiHint = trimmed.length > 0 && !hasExactMatch
+  const hasExactInRemote = remoteResults.some(
+    (s) => s.symbol.toLowerCase() === trimmed.toLowerCase(),
+  )
+  const showApiHint =
+    trimmed.length > 0 &&
+    !isSearching &&
+    filtered.length === 0 &&
+    !hasExactMatch &&
+    !hasExactInRemote
 
   function isFavorite(symbol) {
     return favoriteSymbols.includes(symbol)
@@ -132,7 +183,7 @@ function StockSearchBar({ onSelect, onFavoritesChange }) {
     e.preventDefault()
 
     const normalized = trimmed.toLowerCase()
-    const exactMatch = MOCK_STOCKS.find(
+    const exactMatch = filtered.find(
       (stock) => stock.symbol.toLowerCase() === normalized,
     )
 
@@ -196,6 +247,12 @@ function StockSearchBar({ onSelect, onFavoritesChange }) {
           )}
 
           {trimmed.length > 0 && filtered.map((stock) => renderStockRow(stock))}
+
+          {trimmed.length > 0 && isSearching && (
+            <li className="stock-search-hint" role="option" aria-disabled="true">
+              Searching US symbols…
+            </li>
+          )}
 
           {showApiHint && (
             <li

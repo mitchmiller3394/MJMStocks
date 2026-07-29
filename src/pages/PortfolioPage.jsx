@@ -27,6 +27,7 @@ import {
 import SortableStockCard from '../components/SortableStockCard.jsx'
 import MarketClock from '../components/MarketClock.jsx'
 import StockSearchBar from '../components/StockSearchBar.jsx'
+import { getQuote, isRateLimitCoolingDown } from '../data/finnhubClient.js'
 
 const SORT_OPTIONS = [
   { value: 'manual', label: 'Manual (drag to reorder)' },
@@ -86,6 +87,9 @@ function PortfolioPage() {
   const [sortMode, setSortMode] = useState('manual')
   const [favoritesExpanded, setFavoritesExpanded] = useState(true)
   const [ownedPositions] = useState(() => getOwnedPositions())
+  const [quotesBySymbol, setQuotesBySymbol] = useState({})
+  const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false)
+  const [lastQuotesRefreshAt, setLastQuotesRefreshAt] = useState(0)
 
   useEffect(() => {
     setFavoriteSymbols(favoriteSymbols)
@@ -112,14 +116,24 @@ function PortfolioPage() {
       favoriteSymbols.map((symbol) => {
         const stock = stockBySymbol[symbol]
         const metrics = getStockMetrics(stock)
+        const quote = quotesBySymbol[symbol]
 
         return {
           symbol,
-          name: stock?.name ?? 'Unknown company',
-          ...metrics,
+          name: stock?.name ?? symbol,
+          lastPrice:
+            typeof quote?.currentPrice === 'number' ? quote.currentPrice : metrics.lastPrice,
+          changeValue:
+            typeof quote?.change === 'number' ? quote.change : metrics.changeValue,
+          changePct:
+            typeof quote?.changePercent === 'number'
+              ? quote.changePercent
+              : metrics.changePct,
+          stale: Boolean(quote?.stale),
+          updatedAt: quote?.updatedAt,
         }
       }),
-    [favoriteSymbols],
+    [favoriteSymbols, quotesBySymbol],
   )
 
   const sortedSymbols = useMemo(() => {
@@ -191,6 +205,48 @@ function PortfolioPage() {
     setFavoriteSymbolsState((prev) => prev.filter((entry) => entry !== symbol))
   }
 
+  async function refreshQuotes({ manual = false } = {}) {
+    if (!favoritesExpanded || sortedSymbols.length === 0) {
+      return
+    }
+
+    if (manual) {
+      const tooSoon = Date.now() - lastQuotesRefreshAt < 10_000
+      if (tooSoon || isRateLimitCoolingDown()) {
+        return
+      }
+    }
+
+    setIsRefreshingQuotes(true)
+
+    try {
+      const symbolsToRefresh = sortedSymbols
+      const quoteResults = await Promise.all(
+        symbolsToRefresh.map((symbol) =>
+          getQuote(symbol)
+            .then((quote) => ({ symbol, quote }))
+            .catch(() => ({ symbol, quote: null })),
+        ),
+      )
+
+      setQuotesBySymbol((prev) => {
+        const next = { ...prev }
+
+        quoteResults.forEach(({ symbol, quote }) => {
+          if (quote) {
+            next[symbol] = quote
+          }
+        })
+
+        return next
+      })
+
+      setLastQuotesRefreshAt(Date.now())
+    } finally {
+      setIsRefreshingQuotes(false)
+    }
+  }
+
   function openStockChart(symbol) {
     navigate(`/?symbol=${encodeURIComponent(symbol)}`)
   }
@@ -203,6 +259,40 @@ function PortfolioPage() {
   function handleFavoritesChange(updatedFavorites) {
     setFavoriteSymbolsState(updatedFavorites)
   }
+
+  useEffect(() => {
+    if (!favoritesExpanded || sortedSymbols.length === 0) {
+      return
+    }
+
+    refreshQuotes()
+  }, [favoritesExpanded, sortedSymbols.join('|')])
+
+  useEffect(() => {
+    if (!favoritesExpanded || sortedSymbols.length === 0) {
+      return undefined
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return
+      }
+
+      refreshQuotes()
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [favoritesExpanded, sortedSymbols.join('|')])
+
+  const favoritesLastUpdated =
+    lastQuotesRefreshAt > 0
+      ? new Date(lastQuotesRefreshAt).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      : null
+
   return (
     <main className="page-shell py-4 py-md-5">
       <Container className="px-3 px-md-4">
@@ -233,7 +323,22 @@ function PortfolioPage() {
                   ▾
                 </span>
               </button>
+
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-light"
+                  onClick={() => refreshQuotes({ manual: true })}
+                  disabled={isRefreshingQuotes || isRateLimitCoolingDown()}
+                >
+                  {isRefreshingQuotes ? 'Refreshing…' : 'Refresh visible'}
+                </button>
+              </div>
             </div>
+
+            {favoritesLastUpdated && (
+              <p className="stock-subtitle mb-2">Last updated {favoritesLastUpdated}</p>
+            )}
 
             {favoritesExpanded && (
               <div id="favorites-content">

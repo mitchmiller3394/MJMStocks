@@ -55,6 +55,18 @@ function StockChartCard({
   symbol = 'QTECH',
   labels = defaultLabels,
   points = defaultPoints,
+  lastUpdatedAt,
+  isStale = false,
+  onRefresh,
+  isRefreshing = false,
+  refreshDisabled = false,
+  liveToggleSupported = false,
+  liveEnabled = false,
+  liveStatus = 'off',
+  onToggleLive,
+  priceOverride,
+  changeOverride,
+  changePercentOverride,
 }) {
   const stockData = useMemo(
     () => ({
@@ -138,11 +150,34 @@ function StockChartCard({
     [],
   )
 
-  const lastPrice = points[points.length - 1]
+  const fallbackLastPrice = points[points.length - 1]
   const openPrice = points[0]
-  const delta = lastPrice - openPrice
-  const deltaPct = (delta / openPrice) * 100
+  const lastPrice = typeof priceOverride === 'number' ? priceOverride : fallbackLastPrice
+  const delta =
+    typeof changeOverride === 'number' ? changeOverride : lastPrice - openPrice
+  const deltaPct =
+    typeof changePercentOverride === 'number'
+      ? changePercentOverride
+      : (delta / openPrice) * 100
   const trendClass = delta >= 0 ? 'text-success' : 'text-danger'
+
+  const lastUpdatedLabel =
+    typeof lastUpdatedAt === 'number'
+      ? new Date(lastUpdatedAt).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      : null
+
+  const liveStatusLabel =
+    liveStatus === 'live'
+      ? 'Live'
+      : liveStatus === 'connecting'
+        ? 'Connecting…'
+        : liveStatus === 'error'
+          ? 'Unavailable'
+          : 'Off'
 
   return (
     <Card as="section" className="stock-card p-3 p-sm-4">
@@ -150,6 +185,10 @@ function StockChartCard({
         <div>
           <h2 className="stock-title mb-1">{title}</h2>
           <p className="stock-subtitle mb-0">{subtitle}</p>
+          <p className="stock-subtitle mb-0 mt-1">
+            {isStale ? 'Using cached quote' : 'Quote source: Finnhub'}
+            {lastUpdatedLabel ? ` • Updated ${lastUpdatedLabel}` : ''}
+          </p>
         </div>
 
         <div className="text-end">
@@ -159,6 +198,33 @@ function StockChartCard({
             {delta.toFixed(2)} ({deltaPct.toFixed(2)}%)
           </div>
         </div>
+      </div>
+
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        {onRefresh && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-light"
+            onClick={onRefresh}
+            disabled={isRefreshing || refreshDisabled}
+          >
+            {isRefreshing ? 'Refreshing…' : 'Refresh quote'}
+          </button>
+        )}
+
+        {liveToggleSupported && onToggleLive && (
+          <button
+            type="button"
+            className={`btn btn-sm ${liveEnabled ? 'btn-success' : 'btn-outline-success'}`}
+            onClick={onToggleLive}
+          >
+            {liveEnabled ? 'Disable live' : 'Enable live'} ({liveStatusLabel})
+          </button>
+        )}
+
+        {!liveToggleSupported && (
+          <span className="stock-subtitle">Live websocket unavailable (missing API key).</span>
+        )}
       </div>
 
       <div className="chart-wrap">

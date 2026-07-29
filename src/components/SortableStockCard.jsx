@@ -36,6 +36,15 @@ function SortableStockCard({ stockView, isManual, onToggleFavorite, onOpenStock 
       ? `${stockView.changeValue >= 0 ? '+' : ''}${stockView.changeValue.toFixed(2)} (${stockView.changePct.toFixed(2)}%)`
       : 'Data unavailable'
 
+  const updatedLabel =
+    typeof stockView.updatedAt === 'number'
+      ? new Date(stockView.updatedAt).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      : null
+
   return (
     <Card
       ref={setNodeRef}
@@ -71,6 +80,12 @@ function SortableStockCard({ stockView, isManual, onToggleFavorite, onOpenStock 
                 : '—'}
             </div>
             <div className={`portfolio-stock-change ${deltaClass}`}>{changeLabel}</div>
+            {(stockView.stale || updatedLabel) && (
+              <div className="stock-subtitle">
+                {stockView.stale ? 'Cached quote' : 'Live quote'}
+                {updatedLabel ? ` • ${updatedLabel}` : ''}
+              </div>
+            )}
           </div>
 
           <button
