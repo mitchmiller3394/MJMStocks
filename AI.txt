@@ -23,7 +23,7 @@ Scale (for estimates)
 
 Cumulative Estimate (current)
 -----------------------------
-Approximate AI-generated share of codebase: **78%**
+Approximate AI-generated share of codebase: **81%**
 
 Rationale: Core portfolio infrastructure now includes a dedicated page, drag-and-drop
 manual ordering, advanced sorting, and shared storage utilities for favorites + future
@@ -31,6 +31,29 @@ owned positions, with architecture and UX direction set by the human author.
 
 Entry Log
 ---------
+Date: 2026-07-28
+AI used: GitHub Copilot (GPT-5.3-Codex)
+Summary of AI work:
+- Planned and implemented real market-data integration with caching and rate-limit handling:
+  - Finnhub quote/search wiring,
+  - request spacing/backoff handling for limit responses,
+  - local cache usage to reduce call volume.
+- Added optional live quote/trade behavior and periodic refresh flow.
+- Integrated historical chart data provider logic and timeframe-aware loading.
+- Added chart usability improvements:
+  - timeframe controls (1D, 1W, 1M, 3M, 6M, 1Y, 5Y),
+  - improved hover/tooltip behavior and point tracking.
+- Investigated free-tier API constraints and adjusted timeframe endpoint mapping so premium-only routes are not used for non-premium access.
+Rough time spent:
+- ~7 hours total (planning, implementation, debugging, and validation).
+Human author role:
+- Clarified API-key strategy and provider constraints.
+- Set acceptance criteria for refresh cadence, visible-card updates, stale-data tolerance, and chart UX.
+- Reported observed data issues (derived series overlap across ranges), requested root-cause checks, and guided final constraints.
+Entry-level authorship estimate:
+- AI authored implementation: ~88%
+- Human authored direction, constraints, and acceptance decisions: ~100%
+
 Date: 2026-07-19 (follow-up)
 AI used: GitHub Copilot (GPT-5.3-Codex)
 Summary of AI work:

@@ -49,12 +49,25 @@ const defaultPoints = [
   206.4,
 ]
 
+const TIMEFRAME_OPTIONS = [
+  { value: '1D', label: '1D' },
+  { value: '1W', label: '1W' },
+  { value: '1M', label: '1M' },
+  { value: '3M', label: '3M' },
+  { value: '6M', label: '6M' },
+  { value: '1Y', label: '1Y' },
+  { value: '5Y', label: '5Y' },
+]
+
 function StockChartCard({
   title = 'Simulated Stock Trend',
   subtitle = 'Preview chart (fake data)',
   symbol = 'QTECH',
   labels = defaultLabels,
   points = defaultPoints,
+  timeframe = '1M',
+  timeframeLabel = '1 Month',
+  onTimeframeChange,
   lastUpdatedAt,
   isStale = false,
   onRefresh,
@@ -73,14 +86,15 @@ function StockChartCard({
       labels,
       datasets: [
         {
-          label: `${symbol} (simulated)`,
+          label: `${symbol} • ${timeframeLabel}`,
           data: points,
           fill: true,
-          tension: 0.35,
+          tension: 0.3,
           borderWidth: 2.5,
           borderColor: '#78a6ff',
           pointRadius: 0,
           pointHoverRadius: 5,
+          pointHitRadius: 14,
           pointHoverBackgroundColor: '#c9dcff',
           pointHoverBorderColor: '#78a6ff',
           backgroundColor: (ctx) => {
@@ -118,14 +132,26 @@ function StockChartCard({
           display: false,
         },
         tooltip: {
+          mode: 'nearest',
+          intersect: false,
           backgroundColor: '#0f172acc',
           borderColor: '#94a3b8',
           borderWidth: 1,
           displayColors: false,
+          padding: 12,
           callbacks: {
-            label: (context) => numberFormatter.format(context.parsed.y),
+            title: (items) => items[0]?.label ?? '',
+            label: (context) => `Price: ${numberFormatter.format(context.parsed.y)}`,
           },
         },
+      },
+      interaction: {
+        mode: 'nearest',
+        intersect: false,
+      },
+      hover: {
+        mode: 'nearest',
+        intersect: false,
       },
       scales: {
         x: {
@@ -146,8 +172,15 @@ function StockChartCard({
           },
         },
       },
+      elements: {
+        point: {
+          radius: 0,
+          hoverRadius: 6,
+          hitRadius: 14,
+        },
+      },
     }),
-    [],
+    [points, symbol, timeframeLabel, labels],
   )
 
   const fallbackLastPrice = points[points.length - 1]
@@ -199,6 +232,21 @@ function StockChartCard({
           </div>
         </div>
       </div>
+
+      {onTimeframeChange && (
+        <div className="d-flex flex-wrap gap-2 mb-3">
+          {TIMEFRAME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`btn btn-sm ${timeframe === option.value ? 'btn-primary' : 'btn-outline-light'}`}
+              onClick={() => onTimeframeChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
         {onRefresh && (

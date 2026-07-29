@@ -10,6 +10,7 @@ import {
   buildPseudoIntradaySeries,
   getFinnhubWsUrl,
   getQuote,
+  getEodHistoricalData,
   hasFinnhubToken,
   isRateLimitCoolingDown,
 } from '../data/finnhubClient.js'
@@ -18,12 +19,23 @@ const stockBySymbol = Object.fromEntries(
   MOCK_STOCKS.map((stock) => [stock.symbol, stock]),
 )
 
+const timeframeLabelMap = {
+  '1D': '1 Day',
+  '1W': '1 Week',
+  '1M': '1 Month',
+  '3M': '3 Months',
+  '6M': '6 Months',
+  '1Y': '1 Year',
+  '5Y': '5 Years',
+}
+
 function HomePage() {
   const [selectedStock, setSelectedStock] = useState(null)
   const [chartState, setChartState] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [liveEnabled, setLiveEnabled] = useState(false)
   const [liveStatus, setLiveStatus] = useState('off')
+  const [timeframe, setTimeframe] = useState('1M')
   const lastRefreshAtRef = useRef(0)
   const wsRef = useRef(null)
   const locationSearchRef = useRef('')
@@ -35,7 +47,7 @@ function HomePage() {
   const hasToken = useMemo(() => hasFinnhubToken(), [])
 
   const refreshSelectedStock = useCallback(
-    async ({ manual = false } = {}) => {
+    async ({ manual = false, timeframe: requestedTimeframe = timeframe } = {}) => {
       if (!selectedStock?.symbol) {
         return
       }
@@ -51,20 +63,45 @@ function HomePage() {
 
       try {
         const quote = await getQuote(selectedStock.symbol)
-        const fallback = stockBySymbol[selectedStock.symbol] || stockBySymbol.AAPL
-        const derived = buildPseudoIntradaySeries({
-          labels: fallback?.labels,
-          fallbackPoints: fallback?.points,
-          quote,
-        })
 
-        setChartState({
-          quote,
-          labels: derived.labels,
-          points: derived.points,
-          source: derived.source,
-          updatedAt: quote.updatedAt ?? Date.now(),
-        })
+        let eodData = null
+        try {
+          const eodResult = await getEodHistoricalData(selectedStock.symbol, requestedTimeframe)
+          eodData = eodResult.data
+        } catch {
+          // EOD fetch failed, will fall back to derived
+        }
+
+        const fallback = stockBySymbol[selectedStock.symbol] || stockBySymbol.AAPL
+
+        let chartData
+        if (eodData && Array.isArray(eodData.points) && eodData.points.length > 0) {
+          chartData = {
+            quote,
+            labels: eodData.labels,
+            points: eodData.points,
+            source: requestedTimeframe === '1D' ? 'intraday' : 'eod',
+            timeframe: requestedTimeframe,
+            updatedAt: quote.updatedAt ?? Date.now(),
+          }
+        } else {
+          const derived = buildPseudoIntradaySeries({
+            labels: fallback?.labels,
+            fallbackPoints: fallback?.points,
+            quote,
+          })
+
+          chartData = {
+            quote,
+            labels: derived.labels,
+            points: derived.points,
+            source: derived.source,
+            timeframe: requestedTimeframe,
+            updatedAt: quote.updatedAt ?? Date.now(),
+          }
+        }
+
+        setChartState(chartData)
         lastRefreshAtRef.current = Date.now()
       } catch {
         const fallback = stockBySymbol[selectedStock.symbol] || stockBySymbol.AAPL
@@ -73,13 +110,14 @@ function HomePage() {
           labels: fallback?.labels,
           points: fallback?.points,
           source: 'mock',
+          timeframe: requestedTimeframe,
           updatedAt: Date.now(),
         })
       } finally {
         setIsRefreshing(false)
       }
     },
-    [selectedStock],
+    [selectedStock, timeframe],
   )
 
   useEffect(() => {
@@ -105,8 +143,8 @@ function HomePage() {
       return
     }
 
-    refreshSelectedStock()
-  }, [selectedStock, refreshSelectedStock])
+    refreshSelectedStock({ timeframe })
+  }, [selectedStock, timeframe, refreshSelectedStock])
 
   useEffect(() => {
     if (!selectedStock?.symbol) {
@@ -122,11 +160,11 @@ function HomePage() {
         return
       }
 
-      refreshSelectedStock()
+      refreshSelectedStock({ timeframe })
     }, 30_000)
 
     return () => window.clearInterval(intervalId)
-  }, [selectedStock, liveEnabled, liveStatus, refreshSelectedStock])
+  }, [selectedStock, liveEnabled, liveStatus, refreshSelectedStock, timeframe])
 
   useEffect(() => {
     if (!liveEnabled || !selectedStock?.symbol || !wsUrl) {
@@ -245,7 +283,15 @@ function HomePage() {
 
   const currentPrice = chartState?.quote?.currentPrice
   const quoteSubtitle = selectedStock
-    ? `${selectedStock.symbol} • ${chartState?.source === 'quote-derived' ? 'Real quote + derived intraday shape' : 'Fallback data'}`
+    ? `${selectedStock.symbol} • ${
+        chartState?.source === 'intraday'
+          ? 'Real 5-minute intraday prices'
+          : chartState?.source === 'eod'
+            ? 'Real daily close prices'
+          : chartState?.source === 'quote-derived'
+            ? 'Real quote + derived intraday shape'
+            : 'Fallback data'
+      } • ${timeframeLabelMap[timeframe] ?? timeframe}`
     : 'Select a stock to view'
 
   return (
@@ -261,9 +307,12 @@ function HomePage() {
               symbol={selectedStock.symbol}
               labels={chartState?.labels ?? selectedStock.labels}
               points={chartState?.points ?? selectedStock.points}
+              timeframe={timeframe}
+              timeframeLabel={timeframeLabelMap[timeframe] ?? timeframe}
+              onTimeframeChange={setTimeframe}
               lastUpdatedAt={chartState?.updatedAt}
               isStale={Boolean(chartState?.quote?.stale)}
-              onRefresh={() => refreshSelectedStock({ manual: true })}
+              onRefresh={() => refreshSelectedStock({ manual: true, timeframe })}
               isRefreshing={isRefreshing}
               refreshDisabled={isRateLimitCoolingDown()}
               liveToggleSupported={Boolean(hasToken && wsUrl)}

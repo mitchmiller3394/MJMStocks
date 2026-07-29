@@ -1,6 +1,9 @@
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
 const FINNHUB_TOKEN = import.meta.env.VITE_FINNHUB_API_KEY?.trim() ?? 'd8h2skhr01qhjpmqc330d8h2skhr01qhjpmqc33g'
 
+const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query'
+const ALPHA_VANTAGE_API_KEY = 'XTZRWMX7583WNNBV'
+
 const CACHE_STORAGE_KEY = 'mjmstocks.finnhubCache.v1'
 const REQUEST_SPACING_MS = 350
 const MAX_RETRIES = 2
@@ -92,6 +95,63 @@ function setCacheEntry(key, data, ttlMs) {
   persistCache()
 
   return entry
+}
+
+function getEodConfig(timeframe) {
+  switch (timeframe) {
+    case '1D':
+      return null
+    case '1W':
+      return {
+        cacheTtlMs: 30 * 60 * 1000,
+        functionName: 'TIME_SERIES_DAILY',
+        outputsize: 'compact',
+        pointsLimit: 7,
+        seriesKey: 'Time Series (Daily)',
+      }
+    case '1M':
+      return {
+        cacheTtlMs: 2 * 60 * 60 * 1000,
+        functionName: 'TIME_SERIES_DAILY',
+        outputsize: 'compact',
+        pointsLimit: 22,
+        seriesKey: 'Time Series (Daily)',
+      }
+    case '3M':
+      return {
+        cacheTtlMs: 4 * 60 * 60 * 1000,
+        functionName: 'TIME_SERIES_DAILY',
+        outputsize: 'compact',
+        pointsLimit: 66,
+        seriesKey: 'Time Series (Daily)',
+      }
+    case '6M':
+      return {
+        cacheTtlMs: 6 * 60 * 60 * 1000,
+        functionName: 'TIME_SERIES_WEEKLY',
+        outputsize: 'compact',
+        pointsLimit: 26,
+        seriesKey: 'Weekly Time Series',
+      }
+    case '1Y':
+      return {
+        cacheTtlMs: 12 * 60 * 60 * 1000,
+        functionName: 'TIME_SERIES_WEEKLY',
+        outputsize: 'full',
+        pointsLimit: 52,
+        seriesKey: 'Weekly Time Series',
+      }
+    case '5Y':
+      return {
+        cacheTtlMs: 24 * 60 * 60 * 1000,
+        functionName: 'TIME_SERIES_MONTHLY',
+        outputsize: 'full',
+        pointsLimit: 60,
+        seriesKey: 'Monthly Time Series',
+      }
+    default:
+      return null
+  }
 }
 
 function withQueue(task) {
@@ -343,5 +403,110 @@ export function buildPseudoIntradaySeries({ labels, fallbackPoints, quote }) {
     labels: safeLabels,
     points: generated,
     source: 'quote-derived',
+  }
+}
+
+export async function getEodHistoricalData(symbol, timeframe = '1M') {
+  const normalized = symbol.toUpperCase()
+  const normalizedTimeframe = String(timeframe).toUpperCase()
+  const config = getEodConfig(normalizedTimeframe)
+
+  if (!config) {
+    throw new Error('unsupported-timeframe')
+  }
+
+  const cacheKey = `eod:${normalizedTimeframe}:${normalized}`
+
+  const cached = getCacheEntry(cacheKey)
+  if (cached) {
+    return {
+      data: cached.data,
+      fromCache: true,
+      updatedAt: cached.updatedAt,
+    }
+  }
+
+  try {
+    const url = new URL(ALPHA_VANTAGE_BASE_URL)
+    url.searchParams.set('function', config.functionName)
+    url.searchParams.set('symbol', normalized)
+    url.searchParams.set('outputsize', config.outputsize)
+    url.searchParams.set('apikey', ALPHA_VANTAGE_API_KEY)
+
+    if (config.interval) {
+      url.searchParams.set('interval', config.interval)
+    }
+
+    const response = await fetch(url)
+
+    if (!response.ok) {
+      throw new Error(`http-${response.status}`)
+    }
+
+    const payload = await response.json()
+
+    const series = payload[config.seriesKey]
+
+    if (!series || typeof series !== 'object') {
+      throw new Error('invalid-eod-response')
+    }
+
+    const dates = Object.keys(series).sort()
+    const recent = dates.slice(-config.pointsLimit)
+
+    const points = recent
+      .map((date) => {
+        const entry = series[date]
+        const close = parseFloat(entry['4. close'])
+        return Number.isFinite(close) ? close : null
+      })
+      .filter((price) => price !== null)
+    
+    if (points.length < 2) {
+      throw new Error('insufficient-eod-data')
+    }
+
+    const labels = recent.map((date) => {
+      if (normalizedTimeframe === '1D') {
+        const timeOnly = date.split(' ')[1] ?? date
+        const [hour, minute] = timeOnly.split(':')
+        const hourNum = Number.parseInt(hour, 10)
+        const period = hourNum >= 12 ? 'PM' : 'AM'
+        const displayHour = hourNum % 12 === 0 ? 12 : hourNum % 12
+        return `${displayHour}:${minute} ${period}`
+      }
+
+      const parsed = new Date(date.replace(' ', 'T'))
+      return parsed.toLocaleDateString([], {
+        month: 'short',
+        day: 'numeric',
+        year:
+          normalizedTimeframe === '1Y' || normalizedTimeframe === '5Y'
+            ? 'numeric'
+            : undefined,
+      })
+    })
+
+    const data = { points, labels }
+    setCacheEntry(cacheKey, data, config.cacheTtlMs)
+
+    return {
+      data,
+      fromCache: false,
+      updatedAt: Date.now(),
+    }
+  } catch (error) {
+    const staleEntry = getCacheEntry(cacheKey, { allowStale: true })
+    if (staleEntry) {
+      return {
+        data: staleEntry.data,
+        fromCache: true,
+        stale: true,
+        updatedAt: staleEntry.updatedAt,
+        error,
+      }
+    }
+
+    throw error
   }
 }
