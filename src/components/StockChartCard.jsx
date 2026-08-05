@@ -80,14 +80,27 @@ function StockChartCard({
   priceOverride,
   changeOverride,
   changePercentOverride,
+  // Projection props
+  projectionConfig = null, // { points, labels, endValue, gain, gainPct, rate, horizon }
+  costBasis = null,        // number — shown as horizontal reference line
+  projectionEnabled = false,
+  onToggleProjection,
+  projectionHorizon = '1Y',
+  onProjectionHorizonChange,
 }) {
+  const allLabels = useMemo(() => {
+    if (!projectionEnabled || !projectionConfig) return labels
+    return [...labels, ...projectionConfig.labels.slice(1)]
+  }, [labels, projectionEnabled, projectionConfig])
+
   const stockData = useMemo(
-    () => ({
-      labels,
-      datasets: [
+    () => {
+      const datasets = [
         {
           label: `${symbol} • ${timeframeLabel}`,
-          data: points,
+          data: projectionEnabled && projectionConfig
+            ? [...points, ...Array(projectionConfig.labels.length - 1).fill(null)]
+            : points,
           fill: true,
           tension: 0.3,
           borderWidth: 2.5,
@@ -100,27 +113,61 @@ function StockChartCard({
           backgroundColor: (ctx) => {
             const { chart } = ctx
             const { ctx: canvas, chartArea } = chart
-
-            if (!chartArea) {
-              return 'rgba(120, 166, 255, 0.26)'
-            }
-
-            const gradient = canvas.createLinearGradient(
-              0,
-              chartArea.top,
-              0,
-              chartArea.bottom,
-            )
-
+            if (!chartArea) return 'rgba(120, 166, 255, 0.26)'
+            const gradient = canvas.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
             gradient.addColorStop(0, 'rgba(120, 166, 255, 0.35)')
             gradient.addColorStop(1, 'rgba(120, 166, 255, 0.02)')
-
             return gradient
           },
+          spanGaps: false,
         },
-      ],
-    }),
-    [labels, points, symbol],
+      ]
+
+      if (projectionEnabled && projectionConfig) {
+        // Projected line: starts from the last real point
+        const projData = [
+          ...Array(points.length - 1).fill(null),
+          points[points.length - 1], // overlap one point for continuity
+          ...projectionConfig.points.slice(1),
+        ]
+        datasets.push({
+          label: `${symbol} Projection (${projectionHorizon})`,
+          data: projData,
+          fill: false,
+          tension: 0.3,
+          borderWidth: 2,
+          borderColor: 'rgba(250, 204, 21, 0.85)',
+          borderDash: [6, 4],
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: '#fbbf24',
+          pointHoverBorderColor: '#fbbf24',
+          spanGaps: false,
+          backgroundColor: 'transparent',
+        })
+      }
+
+      if (costBasis !== null && typeof costBasis === 'number') {
+        const totalLength = projectionEnabled && projectionConfig
+          ? points.length + projectionConfig.labels.length - 1
+          : points.length
+        datasets.push({
+          label: 'Cost Basis',
+          data: Array(totalLength).fill(costBasis),
+          fill: false,
+          tension: 0,
+          borderWidth: 1.5,
+          borderColor: 'rgba(148, 163, 184, 0.5)',
+          borderDash: [3, 5],
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          backgroundColor: 'transparent',
+        })
+      }
+
+      return { labels: allLabels, datasets }
+    },
+    [labels, points, symbol, allLabels, projectionEnabled, projectionConfig, projectionHorizon, costBasis],
   )
 
   const stockOptions = useMemo(
@@ -129,7 +176,12 @@ function StockChartCard({
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          display: false,
+          display: projectionEnabled || costBasis !== null,
+          labels: {
+            color: '#94a3b8',
+            font: { size: 11 },
+            boxWidth: 14,
+          },
         },
         tooltip: {
           mode: 'nearest',
@@ -155,32 +207,19 @@ function StockChartCard({
       },
       scales: {
         x: {
-          grid: {
-            color: 'rgba(148, 163, 184, 0.12)',
-          },
-          ticks: {
-            color: '#94a3b8',
-          },
+          grid: { color: 'rgba(148, 163, 184, 0.12)' },
+          ticks: { color: '#94a3b8' },
         },
         y: {
-          grid: {
-            color: 'rgba(148, 163, 184, 0.12)',
-          },
-          ticks: {
-            color: '#94a3b8',
-            callback: (value) => `$${value}`,
-          },
+          grid: { color: 'rgba(148, 163, 184, 0.12)' },
+          ticks: { color: '#94a3b8', callback: (value) => `$${value}` },
         },
       },
       elements: {
-        point: {
-          radius: 0,
-          hoverRadius: 6,
-          hitRadius: 14,
-        },
+        point: { radius: 0, hoverRadius: 6, hitRadius: 14 },
       },
     }),
-    [points, symbol, timeframeLabel, labels],
+    [points, symbol, timeframeLabel, labels, projectionEnabled, costBasis],
   )
 
   const fallbackLastPrice = points[points.length - 1]
@@ -273,7 +312,45 @@ function StockChartCard({
         {!liveToggleSupported && (
           <span className="stock-subtitle">Live websocket unavailable (missing API key).</span>
         )}
+
+        {onToggleProjection && (
+          <button
+            type="button"
+            className={`btn btn-sm proj-toggle-btn ${projectionEnabled ? 'btn-warning' : 'btn-outline-warning'}`}
+            onClick={onToggleProjection}
+          >
+            {projectionEnabled ? '📈 Hide Projection' : '📈 Show Projection'}
+          </button>
+        )}
       </div>
+
+      {projectionEnabled && projectionConfig && (
+        <div className="proj-controls d-flex flex-wrap align-items-center gap-3 mb-3">
+          <div className="d-flex align-items-center gap-1">
+            <span className="account-subtitle me-1">Horizon:</span>
+            {['1M', '3M', '6M', '1Y', '5Y'].map((h) => (
+              <button
+                key={h}
+                type="button"
+                className={`btn btn-xs ${projectionHorizon === h ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => onProjectionHorizonChange?.(h)}
+              >
+                {h}
+              </button>
+            ))}
+          </div>
+          <div className="proj-summary">
+            Rate: <strong>{projectionConfig.rate >= 0 ? '+' : ''}{(projectionConfig.rate * 100).toFixed(1)}%/yr</strong>
+            &nbsp;→&nbsp;
+            Est. <strong>{numberFormatter.format(projectionConfig.endValue)}</strong>
+            &nbsp;in {projectionHorizon}&nbsp;
+            <span className={projectionConfig.gain >= 0 ? 'text-success' : 'text-danger'}>
+              ({projectionConfig.gain >= 0 ? '+' : ''}{numberFormatter.format(projectionConfig.gain)},&nbsp;
+              {projectionConfig.gainPct >= 0 ? '+' : ''}{projectionConfig.gainPct.toFixed(1)}%)
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="chart-wrap">
         <Line data={stockData} options={stockOptions} />

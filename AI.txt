@@ -23,7 +23,7 @@ Scale (for estimates)
 
 Cumulative Estimate (current)
 -----------------------------
-Approximate AI-generated share of codebase: **81%**
+Approximate AI-generated share of codebase: **84%**
 
 Rationale: Core portfolio infrastructure now includes a dedicated page, drag-and-drop
 manual ordering, advanced sorting, and shared storage utilities for favorites + future
@@ -31,6 +31,33 @@ owned positions, with architecture and UX direction set by the human author.
 
 Entry Log
 ---------
+Date: 2026-08-04
+AI used: GitHub Copilot (GPT-5.3-Codex)
+Summary of AI work:
+- Replaced placeholder About experience with Account-focused paper-trading functionality.
+- Added account storage and paper-trade logic:
+  - starting cash balance,
+  - daily funding limits,
+  - holdings + lots,
+  - buy/sell transactions (fractional shares supported),
+  - account events and summary helpers.
+- Added new account/transaction pages and navbar account summary badge.
+- Added buy/sell trading panel to stock chart workflow.
+- Added projection analytics controls and what-if estimation helpers.
+- Diagnosed and fixed Account page navigation lock caused by a `Maximum update depth exceeded` render loop.
+  - Root cause: countdown hook effect depended on a constantly changing value.
+  - Fix: initialize once and update via interval, removing re-render recursion.
+- Removed temporary debug console logging after validation.
+Rough time spent:
+- ~6 hours total (implementation, integration, debugging, verification).
+Human author role:
+- Defined product direction for Account vs About replacement.
+- Set paper-trading requirements (funding rules, fractional shares, buy/sell surfaces, analytics emphasis).
+- Reported runtime navigation bug with console traces to help isolate root cause.
+Entry-level authorship estimate:
+- AI authored implementation: ~90%
+- Human authored requirements and acceptance decisions: ~100%
+
 Date: 2026-07-28
 AI used: GitHub Copilot (GPT-5.3-Codex)
 Summary of AI work:

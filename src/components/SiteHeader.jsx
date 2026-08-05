@@ -1,7 +1,10 @@
 import { Container, Nav, Navbar } from 'react-bootstrap'
-import { NavLink } from 'react-router'
+import { NavLink, useNavigate } from 'react-router'
+import AccountBalanceBadge from './AccountBalanceBadge.jsx'
 
 function SiteHeader() {
+  const navigate = useNavigate()
+
   return (
     <Navbar expand="sm" variant="dark" className="site-header py-3">
       <Container>
@@ -11,13 +14,15 @@ function SiteHeader() {
 
         <Navbar.Toggle aria-controls="main-nav" />
         <Navbar.Collapse id="main-nav">
-          <Nav className="ms-auto gap-2">
-            <Nav.Link as={NavLink} to="/portfolio">
+          <Nav className="ms-auto gap-2 align-items-center">
+            <Nav.Link
+              as="button"
+              type="button"
+              onClick={() => navigate('/portfolio')}
+            >
               Portfolio
             </Nav.Link>
-            <Nav.Link as={NavLink} to="/about">
-              About
-            </Nav.Link>
+            <AccountBalanceBadge />
           </Nav>
         </Navbar.Collapse>
       </Container>

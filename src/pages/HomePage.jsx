@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router'
 import MarketClock from '../components/MarketClock.jsx'
 import StockChartCard from '../components/StockChartCard.jsx'
 import StockSearchBar from '../components/StockSearchBar.jsx'
+import BuySellPanel from '../components/BuySellPanel.jsx'
 import { MOCK_STOCKS } from '../data/mockStocks.js'
 import {
   buildPseudoIntradaySeries,
@@ -14,6 +15,12 @@ import {
   hasFinnhubToken,
   isRateLimitCoolingDown,
 } from '../data/finnhubClient.js'
+import {
+  ACCOUNT_UPDATE_EVENT_NAME,
+  buildProjection,
+  estimateAnnualRate,
+  getHolding,
+} from '../data/accountStorage.js'
 
 const stockBySymbol = Object.fromEntries(
   MOCK_STOCKS.map((stock) => [stock.symbol, stock]),
@@ -36,6 +43,10 @@ function HomePage() {
   const [liveEnabled, setLiveEnabled] = useState(false)
   const [liveStatus, setLiveStatus] = useState('off')
   const [timeframe, setTimeframe] = useState('1M')
+  // Projection state
+  const [projectionEnabled, setProjectionEnabled] = useState(false)
+  const [projectionHorizon, setProjectionHorizon] = useState('1Y')
+  const [holding, setHolding] = useState(null)
   const lastRefreshAtRef = useRef(0)
   const wsRef = useRef(null)
   const locationSearchRef = useRef('')
@@ -45,6 +56,29 @@ function HomePage() {
 
   const wsUrl = useMemo(() => getFinnhubWsUrl(), [])
   const hasToken = useMemo(() => hasFinnhubToken(), [])
+
+  // Keep holding in sync when account changes or stock changes
+  useEffect(() => {
+    const refresh = () => {
+      if (selectedStock?.symbol) setHolding(getHolding(selectedStock.symbol))
+    }
+    refresh()
+    window.addEventListener(ACCOUNT_UPDATE_EVENT_NAME, refresh)
+    return () => window.removeEventListener(ACCOUNT_UPDATE_EVENT_NAME, refresh)
+  }, [selectedStock])
+
+  // Auto-disable projection when switching stocks
+  useEffect(() => {
+    setProjectionEnabled(false)
+  }, [selectedStock?.symbol])
+
+  // Compute projection data
+  const projectionConfig = useMemo(() => {
+    if (!projectionEnabled || !chartState?.points?.length) return null
+    const rate = estimateAnnualRate(chartState.points)
+    const lastPrice = chartState.quote?.currentPrice ?? chartState.points[chartState.points.length - 1]
+    return { ...buildProjection(lastPrice, rate, projectionHorizon), rate }
+  }, [projectionEnabled, projectionHorizon, chartState])
 
   const refreshSelectedStock = useCallback(
     async ({ manual = false, timeframe: requestedTimeframe = timeframe } = {}) => {
@@ -301,28 +335,40 @@ function HomePage() {
           <MarketClock />
           <StockSearchBar onSelect={handleSelect} />
           {selectedStock && (
-            <StockChartCard
-              title={selectedStock.name}
-              subtitle={quoteSubtitle}
-              symbol={selectedStock.symbol}
-              labels={chartState?.labels ?? selectedStock.labels}
-              points={chartState?.points ?? selectedStock.points}
-              timeframe={timeframe}
-              timeframeLabel={timeframeLabelMap[timeframe] ?? timeframe}
-              onTimeframeChange={setTimeframe}
-              lastUpdatedAt={chartState?.updatedAt}
-              isStale={Boolean(chartState?.quote?.stale)}
-              onRefresh={() => refreshSelectedStock({ manual: true, timeframe })}
-              isRefreshing={isRefreshing}
-              refreshDisabled={isRateLimitCoolingDown()}
-              liveToggleSupported={Boolean(hasToken && wsUrl)}
-              liveEnabled={liveEnabled}
-              liveStatus={liveStatus}
-              onToggleLive={() => setLiveEnabled((prev) => !prev)}
-              priceOverride={typeof currentPrice === 'number' ? currentPrice : undefined}
-              changeOverride={chartState?.quote?.change}
-              changePercentOverride={chartState?.quote?.changePercent}
-            />
+            <>
+              <StockChartCard
+                title={selectedStock.name}
+                subtitle={quoteSubtitle}
+                symbol={selectedStock.symbol}
+                labels={chartState?.labels ?? selectedStock.labels}
+                points={chartState?.points ?? selectedStock.points}
+                timeframe={timeframe}
+                timeframeLabel={timeframeLabelMap[timeframe] ?? timeframe}
+                onTimeframeChange={setTimeframe}
+                lastUpdatedAt={chartState?.updatedAt}
+                isStale={Boolean(chartState?.quote?.stale)}
+                onRefresh={() => refreshSelectedStock({ manual: true, timeframe })}
+                isRefreshing={isRefreshing}
+                refreshDisabled={isRateLimitCoolingDown()}
+                liveToggleSupported={Boolean(hasToken && wsUrl)}
+                liveEnabled={liveEnabled}
+                liveStatus={liveStatus}
+                onToggleLive={() => setLiveEnabled((prev) => !prev)}
+                priceOverride={typeof currentPrice === 'number' ? currentPrice : undefined}
+                changeOverride={chartState?.quote?.change}
+                changePercentOverride={chartState?.quote?.changePercent}
+                projectionEnabled={projectionEnabled}
+                projectionConfig={projectionConfig}
+                projectionHorizon={projectionHorizon}
+                onProjectionHorizonChange={(h) => setProjectionHorizon(h)}
+                onToggleProjection={() => setProjectionEnabled((p) => !p)}
+                costBasis={holding ? holding.avgCost : null}
+              />
+              <BuySellPanel
+                symbol={selectedStock.symbol}
+                currentPrice={typeof currentPrice === 'number' ? currentPrice : null}
+              />
+            </>
           )}
         </Card>
       </Container>

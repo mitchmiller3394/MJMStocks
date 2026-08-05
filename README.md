@@ -1,24 +1,45 @@
-# React + Vite
+# MJMStocks
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Paper-trading web app built with React + Vite.
 
-Currently, two official plugins are available:
+## What this app does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Real quote/search integration (Finnhub)
+- Historical chart ranges (free-tier compatible provider mapping)
+- Favorites and Portfolio management
+- Paper-trading account with fake money:
+	- starting cash: $1,000
+	- manual daily funding up to $2,000/day
+	- buy/sell (including fractional shares)
+	- holdings, transactions, and account value tracking
+	- projection analytics for what-if investing scenarios
 
-## React Compiler
+## Routes
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `/` — Home (search, charts, buy/sell)
+- `/portfolio` — Watchlist + owned positions summary
+- `/account` — Funding controls, account stats, holdings analytics
+- `/transactions` — Full transaction history
 
-## Expanding the ESLint configuration
+## Local development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Install dependencies:
 
-## Finnhub setup (frontend-only)
+`npm install`
 
-Create a local env file and set your API key:
+Run dev server:
 
-`VITE_FINNHUB_API_KEY=your_key_here`
+`npm run dev`
 
-In a static frontend this key is still publicly recoverable at runtime, but keeping it in an env variable is cleaner than hardcoding it in source files.
+Build production bundle:
+
+`npm run build`
+
+## Deployment output
+
+Build output is configured to `docs/` for static hosting workflows.
+
+## API key note
+
+This is a frontend-only app. Any runtime key in client code should be treated as public.
+
