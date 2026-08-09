@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, Container, Form } from 'react-bootstrap'
+import { Card, Container } from 'react-bootstrap'
 import { useNavigate } from 'react-router'
 import {
-  DndContext,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
 import {
-  SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 
 import { MOCK_STOCKS } from '../data/mockStocks.js'
@@ -27,10 +23,11 @@ import {
   ACCOUNT_UPDATE_EVENT_NAME,
   getAllHoldings,
 } from '../data/accountStorage.js'
-import SortableStockCard from '../components/SortableStockCard.jsx'
 import MarketClock from '../components/MarketClock.jsx'
 import StockSearchBar from '../components/StockSearchBar.jsx'
 import { getQuote, isRateLimitCoolingDown } from '../data/finnhubClient.js'
+import FavoritesSection from '../components/portfolio/FavoritesSection.jsx'
+import OwnedPositionsSection from '../components/portfolio/OwnedPositionsSection.jsx'
 
 const SORT_OPTIONS = [
   { value: 'manual', label: 'Manual (drag to reorder)' },
@@ -358,174 +355,31 @@ function PortfolioPage() {
           <StockSearchBar onSelect={handleSearchSelect} onFavoritesChange={handleFavoritesChange} />
           <p className="eyebrow mb-2">Portfolio</p>
 
-          <section className="mb-4 mb-lg-5">
-            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-              <button
-                type="button"
-                className="portfolio-collapse-btn"
-                aria-expanded={favoritesExpanded}
-                aria-controls="favorites-content"
-                onClick={() => setFavoritesExpanded((prev) => !prev)}
-              >
-                <span className="portfolio-section-title mb-0">Favorited Stocks</span>
-                <span className="portfolio-collapse-meta">
-                  {favoriteSymbols.length} saved
-                </span>
-                <span
-                  className={`portfolio-collapse-chevron${
-                    favoritesExpanded ? ' is-open' : ''
-                  }`}
-                  aria-hidden="true"
-                >
-                  ▾
-                </span>
-              </button>
+          <FavoritesSection
+            favoritesExpanded={favoritesExpanded}
+            favoriteSymbols={favoriteSymbols}
+            isRefreshingQuotes={isRefreshingQuotes}
+            onToggleExpanded={() => setFavoritesExpanded((prev) => !prev)}
+            onManualRefresh={() => refreshQuotes({ manual: true })}
+            favoritesLastUpdated={favoritesLastUpdated}
+            sortMode={sortMode}
+            onSortModeChange={setSortMode}
+            sortOptions={SORT_OPTIONS}
+            sensors={sensors}
+            sortedSymbols={sortedSymbols}
+            onDragEnd={handleDragEnd}
+            viewBySymbol={viewBySymbol}
+            onToggleFavorite={toggleFavorite}
+            onOpenStock={openStockChart}
+            isRateLimitCoolingDown={isRateLimitCoolingDown()}
+          />
 
-              <div className="d-flex align-items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-light"
-                  onClick={() => refreshQuotes({ manual: true })}
-                  disabled={isRefreshingQuotes || isRateLimitCoolingDown()}
-                >
-                  {isRefreshingQuotes ? 'Refreshing…' : 'Refresh visible'}
-                </button>
-              </div>
-            </div>
-
-            {favoritesLastUpdated && (
-              <p className="stock-subtitle mb-2">Last updated {favoritesLastUpdated}</p>
-            )}
-
-            {favoritesExpanded && (
-              <div id="favorites-content">
-                <Form.Group controlId="portfolio-sort" className="portfolio-sort-wrap mb-3">
-                  <Form.Label className="portfolio-sort-label mb-1">Sort</Form.Label>
-                  <Form.Select
-                    value={sortMode}
-                    onChange={(event) => setSortMode(event.target.value)}
-                    className="portfolio-sort-select"
-                  >
-                    {SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-
-                {favoriteSymbols.length === 0 ? (
-                  <Card className="portfolio-empty-card border-0 p-3 p-sm-4">
-                    <p className="portfolio-empty-title mb-1">No favorites yet</p>
-                    <p className="portfolio-empty-copy mb-0">
-                      Favorite symbols from Home to build your watchlist.
-                    </p>
-                  </Card>
-                ) : (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={sortedSymbols}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="portfolio-list d-flex flex-column gap-3">
-                        {sortedSymbols.map((symbol) => {
-                          const stockView = viewBySymbol[symbol]
-                          if (!stockView) return null
-
-                          return (
-                            <SortableStockCard
-                              key={symbol}
-                              stockView={stockView}
-                              isManual={sortMode === 'manual'}
-                              onToggleFavorite={toggleFavorite}
-                              onOpenStock={openStockChart}
-                            />
-                          )
-                        })}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                )}
-              </div>
-            )}
-          </section>
-
-          <section>
-            <h2 className="portfolio-section-title mb-3">Owned Positions</h2>
-
-            {ownedPositions.length === 0 ? (
-              <Card className="portfolio-empty-card border-0 p-3 p-sm-4">
-                <p className="portfolio-empty-title mb-1">You currently hold no positions</p>
-                <p className="portfolio-empty-copy mb-0">
-                  Your owned stocks will appear here as soon as you place your first buy order.
-                </p>
-              </Card>
-            ) : (
-              <div className="portfolio-list d-flex flex-column gap-3">
-                {ownedPositions.map((pos) => {
-                  const stock = stockBySymbol[pos.symbol]
-                  const currentPrice = ownedQuotes[pos.symbol]
-                  const currentValue = typeof currentPrice === 'number'
-                    ? currentPrice * pos.shares
-                    : pos.avgCost * pos.shares
-                  const unrealizedGain = currentValue - pos.avgCost * pos.shares
-                  const unrealizedPct = pos.avgCost > 0
-                    ? ((currentValue - pos.avgCost * pos.shares) / (pos.avgCost * pos.shares)) * 100
-                    : 0
-                  const gainClass = unrealizedGain >= 0 ? 'text-success' : 'text-danger'
-                  const sharesLabel = pos.shares % 1 === 0 ? pos.shares : pos.shares.toFixed(4)
-
-                  return (
-                    <Card
-                      key={pos.symbol}
-                      className="portfolio-stock-item portfolio-stock-item-clickable border-0 p-3 p-sm-4"
-                      onClick={() => openStockChart(pos.symbol)}
-                    >
-                      <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
-                        <div className="min-w-0">
-                          <h2 className="portfolio-stock-symbol mb-1">{pos.symbol}</h2>
-                          <p className="portfolio-stock-name mb-0">
-                            {stock?.name ?? pos.symbol} · {sharesLabel} shares
-                          </p>
-                          <p className="stock-subtitle mb-0">
-                            Avg cost ${pos.avgCost.toFixed(2)}/share
-                          </p>
-                        </div>
-                        <div className="d-flex align-items-center gap-3 ms-sm-auto">
-                          <div className="text-end">
-                            <div className="portfolio-stock-price">
-                              ${currentValue.toFixed(2)}
-                            </div>
-                            <div className={`portfolio-stock-change ${gainClass}`}>
-                              {unrealizedGain >= 0 ? '+' : ''}{unrealizedGain.toFixed(2)} ({unrealizedPct.toFixed(2)}%)
-                            </div>
-                            {typeof currentPrice === 'number' && (
-                              <div className="stock-subtitle">${currentPrice.toFixed(2)}/share</div>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-warning"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openStockChart(pos.symbol)
-                            }}
-                            title={`Sell ${pos.symbol}`}
-                          >
-                            Sell
-                          </button>
-                        </div>
-                      </div>
-                    </Card>
-                  )
-                })}
-              </div>
-            )}
-          </section>
+          <OwnedPositionsSection
+            ownedPositions={ownedPositions}
+            ownedQuotes={ownedQuotes}
+            stockBySymbol={stockBySymbol}
+            onOpenStock={openStockChart}
+          />
         </Card>
       </Container>
     </main>
