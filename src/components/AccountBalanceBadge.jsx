@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import {
   ACCOUNT_UPDATE_EVENT_NAME,
+  getAccount,
   getTotalPortfolioValue,
 } from '../data/accountStorage.js'
+import { getQuote } from '../data/finnhubClient.js'
 
 const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
@@ -15,8 +17,8 @@ function AccountBalanceBadge() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const refresh = useCallback(() => {
-    const next = getTotalPortfolioValue()
+  const updateTotals = useCallback((priceMap = {}) => {
+    const next = getTotalPortfolioValue(priceMap)
     const prev = prevTotalRef.current
     const delta = next.total - prev
 
@@ -31,13 +33,58 @@ function AccountBalanceBadge() {
     setTotals(next)
   }, [])
 
+  const refreshHoldingPrices = useCallback(async () => {
+    const account = getAccount()
+    const symbols = account.holdings.map((holding) => holding.symbol)
+
+    if (symbols.length === 0) {
+      updateTotals({})
+      return
+    }
+
+    const results = await Promise.all(
+      symbols.map((symbol) =>
+        getQuote(symbol)
+          .then((quote) => ({ symbol, price: quote?.currentPrice }))
+          .catch(() => ({ symbol, price: undefined })),
+      ),
+    )
+
+    const priceMap = {}
+    results.forEach(({ symbol, price }) => {
+      if (typeof price === 'number' && Number.isFinite(price)) {
+        priceMap[symbol] = price
+      }
+    })
+
+    updateTotals(priceMap)
+  }, [updateTotals])
+
   useEffect(() => {
-    window.addEventListener(ACCOUNT_UPDATE_EVENT_NAME, refresh)
+    refreshHoldingPrices()
+  }, [refreshHoldingPrices])
+
+  useEffect(() => {
+    const handleAccountUpdate = () => {
+      refreshHoldingPrices()
+    }
+
+    window.addEventListener(ACCOUNT_UPDATE_EVENT_NAME, handleAccountUpdate)
     return () => {
-      window.removeEventListener(ACCOUNT_UPDATE_EVENT_NAME, refresh)
+      window.removeEventListener(ACCOUNT_UPDATE_EVENT_NAME, handleAccountUpdate)
       clearTimeout(flashTimerRef.current)
     }
-  }, [refresh])
+  }, [refreshHoldingPrices])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshHoldingPrices()
+      }
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [refreshHoldingPrices])
 
   return (
     <button
