@@ -17,8 +17,10 @@ import {
 } from '../data/finnhubClient.js'
 import {
   ACCOUNT_UPDATE_EVENT_NAME,
+  analyzeChartMetrics,
   buildProjection,
   estimateAnnualRate,
+  estimateChartAnnualRate,
   getHolding,
 } from '../data/accountStorage.js'
 
@@ -46,6 +48,7 @@ function HomePage() {
   // Projection state
   const [projectionEnabled, setProjectionEnabled] = useState(false)
   const [projectionHorizon, setProjectionHorizon] = useState('1Y')
+  const [projectionMode, setProjectionMode] = useState('simple') // 'simple' or 'complex'
   const [holding, setHolding] = useState(null)
   const lastRefreshAtRef = useRef(0)
   const wsRef = useRef(null)
@@ -75,10 +78,22 @@ function HomePage() {
   // Compute projection data
   const projectionConfig = useMemo(() => {
     if (!projectionEnabled || !chartState?.points?.length) return null
-    const rate = estimateAnnualRate(chartState.points)
+    const rate = estimateChartAnnualRate(chartState.points, {
+      timeframeLabel: chartState.timeframe,
+      baselineRate: 0.08,
+      stabilizationFactor: 0.5,
+      volatilityDamping: 0.3,
+    })
+    const metrics = analyzeChartMetrics(chartState.points)
     const lastPrice = chartState.quote?.currentPrice ?? chartState.points[chartState.points.length - 1]
-    return { ...buildProjection(lastPrice, rate, projectionHorizon), rate }
-  }, [projectionEnabled, projectionHorizon, chartState])
+    return {
+      ...buildProjection(lastPrice, rate, projectionHorizon, {
+        mode: projectionMode,
+        metrics,
+      }),
+      rate,
+    }
+  }, [projectionEnabled, projectionHorizon, projectionMode, chartState])
 
   const refreshSelectedStock = useCallback(
     async ({ manual = false, timeframe: requestedTimeframe = timeframe } = {}) => {
@@ -360,6 +375,8 @@ function HomePage() {
                 projectionEnabled={projectionEnabled}
                 projectionConfig={projectionConfig}
                 projectionHorizon={projectionHorizon}
+                projectionMode={projectionMode}
+                onProjectionModeChange={(mode) => setProjectionMode(mode)}
                 onProjectionHorizonChange={(h) => setProjectionHorizon(h)}
                 onToggleProjection={() => setProjectionEnabled((p) => !p)}
                 costBasis={holding ? holding.avgCost : null}

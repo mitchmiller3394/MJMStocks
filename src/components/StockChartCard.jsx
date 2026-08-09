@@ -85,6 +85,8 @@ function StockChartCard({
   costBasis = null,        // number — shown as horizontal reference line
   projectionEnabled = false,
   onToggleProjection,
+  projectionMode = 'simple',
+  onProjectionModeChange,
   projectionHorizon = '1Y',
   onProjectionHorizonChange,
 }) {
@@ -326,6 +328,23 @@ function StockChartCard({
 
       {projectionEnabled && projectionConfig && (
         <div className="proj-controls d-flex flex-wrap align-items-center gap-3 mb-3">
+          <div className="d-flex align-items-center gap-2">
+            <span className="account-subtitle me-1">Mode:</span>
+            <button
+              type="button"
+              className={`btn btn-xs ${projectionMode === 'simple' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => onProjectionModeChange?.('simple')}
+            >
+              Simple
+            </button>
+            <button
+              type="button"
+              className={`btn btn-xs ${projectionMode === 'complex' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => onProjectionModeChange?.('complex')}
+            >
+              Complex
+            </button>
+          </div>
           <div className="d-flex align-items-center gap-1">
             <span className="account-subtitle me-1">Horizon:</span>
             {['1M', '3M', '6M', '1Y', '5Y'].map((h) => (

@@ -284,8 +284,82 @@ export function estimateAnnualRate(points, options = {}) {
   return Math.min(5, Math.max(-0.95, annualized))
 }
 
-/**
- * Estimate annualized performance for a holding using lot timing and current price.
+/** * Estimate annualized rate from a chart's price series, considering volatility and trend direction.
+ * Uses multiple segments to capture mid-term momentum while stabilizing against noise.
+ * @param {number[]} points - array of price data points
+ * @param {object} options - { timeframeLabel, baselineRate, stabilizationFactor, volatilityDamping }
+ * @returns {number} - annualized rate (decimal)
+ */
+export function estimateChartAnnualRate(points, options = {}) {
+  if (!Array.isArray(points) || points.length < 2) return 0.07
+
+  const validPoints = points.filter((p) => Number.isFinite(p) && p > 0)
+  if (validPoints.length < 2) return 0.07
+
+  const {
+    timeframeLabel = '1M',
+    baselineRate = 0.08,
+    stabilizationFactor = 0.5, // how much to blend with baseline [0-1]
+    volatilityDamping = 0.3, // how much to dampen strong swings [0-1]
+  } = options
+
+  const first = validPoints[0]
+  const last = validPoints[validPoints.length - 1]
+  const fullPeriodReturn = (last - first) / first
+
+  // Map timeframe label to approximate trading days
+  const timeframeDays = {
+    '1D': 1,
+    '1W': 5,
+    '1M': 21,
+    '3M': 63,
+    '6M': 126,
+    '1Y': 252,
+    '5Y': 1260,
+  }[timeframeLabel] || 21
+
+  // Compute segment returns to detect mid-term momentum
+  const segmentCount = Math.min(3, Math.floor(validPoints.length / 5))
+  const segmentSize = Math.floor(validPoints.length / Math.max(1, segmentCount))
+  let cumulativeSegmentReturn = 0
+
+  if (segmentSize > 0) {
+    for (let i = 0; i < segmentCount; i++) {
+      const startIdx = i * segmentSize
+      const endIdx = Math.min(startIdx + segmentSize, validPoints.length - 1)
+      if (endIdx > startIdx) {
+        const segStart = validPoints[startIdx]
+        const segEnd = validPoints[endIdx]
+        const segReturn = (segEnd - segStart) / segStart
+        cumulativeSegmentReturn += segReturn
+      }
+    }
+    cumulativeSegmentReturn /= Math.max(1, segmentCount)
+  } else {
+    cumulativeSegmentReturn = fullPeriodReturn
+  }
+
+  // Blend full-period trend with segment trend to get more realistic mid-term direction
+  const blendedReturn = 0.6 * fullPeriodReturn + 0.4 * cumulativeSegmentReturn
+
+  // Dampen extreme swings to prevent overconfident projections
+  const dampedReturn = blendedReturn * (1 - volatilityDamping * Math.abs(blendedReturn))
+
+  // Annualize: assume the observed return period is timeframeDays trading days
+  const periods = Math.max(1, validPoints.length - 1)
+  const annualized = Math.pow(1 + dampedReturn, 365 / timeframeDays) - 1
+
+  // Stabilize: blend observed annualized rate with baseline to avoid overreacting
+  const sampleWeight = Math.min(1, timeframeDays / 252)
+  const stabilized =
+    baselineRate +
+    (annualized - baselineRate) * sampleWeight * stabilizationFactor
+
+  // Cap between -95% and +500% to prevent nonsense projections
+  return Math.min(5, Math.max(-0.95, stabilized))
+}
+
+/** * Estimate annualized performance for a holding using lot timing and current price.
  * This avoids overreacting when only a few days of ownership are available.
  */
 export function estimateHoldingAnnualRate(holding, currentPrice, asOf = new Date()) {
@@ -359,13 +433,65 @@ export function estimateHoldingAnnualRate(holding, currentPrice, asOf = new Date
 }
 
 /**
+ * Analyze historical data to extract volatility, cycle patterns, and momentum.
+ * @param {number[]} points - historical price data
+ * @returns {{ volatility: number, cyclePeriod: number, recentMomentum: number }}
+ */
+export function analyzeChartMetrics(points) {
+  if (!Array.isArray(points) || points.length < 3) {
+    return { volatility: 0.02, cyclePeriod: 5, recentMomentum: 0 }
+  }
+
+  // Calculate standard deviation (volatility)
+  const mean = points.reduce((sum, p) => sum + p, 0) / points.length
+  const variance = points.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / points.length
+  const volatility = Math.sqrt(variance) / mean // as % of price
+
+  // Detect cycle period by finding repeating peak-to-peak or valley-to-valley distance
+  let cyclePeriod = Math.max(3, Math.floor(points.length / 4))
+  if (points.length >= 10) {
+    const peaks = []
+    for (let i = 1; i < points.length - 1; i++) {
+      if (points[i] > points[i - 1] && points[i] > points[i + 1]) {
+        peaks.push(i)
+      }
+    }
+    if (peaks.length >= 2) {
+      const distances = []
+      for (let i = 1; i < peaks.length; i++) {
+        distances.push(peaks[i] - peaks[i - 1])
+      }
+      const avgDistance = distances.reduce((sum, d) => sum + d, 0) / distances.length
+      cyclePeriod = Math.max(3, Math.round(avgDistance))
+    }
+  }
+
+  // Detect recent momentum (expansion vs contraction in last 1/3 of data)
+  const recentStartIdx = Math.max(0, Math.floor(points.length * 0.67))
+  let recentMomentum = 0
+  if (recentStartIdx < points.length - 1) {
+    const recentSegment = points.slice(recentStartIdx)
+    const segmentReturn = (recentSegment[recentSegment.length - 1] - recentSegment[0]) / recentSegment[0]
+    // Positive momentum = up trend, negative = down trend
+    recentMomentum = segmentReturn
+  }
+
+  return {
+    volatility: Math.max(0.01, Math.min(0.15, volatility)),
+    cyclePeriod,
+    recentMomentum,
+  }
+}
+
+/**
  * Generate projection data points from a starting price, rate, and horizon.
  * @param {number} startPrice
  * @param {number} annualRate  - decimal (e.g. 0.10 for 10%)
  * @param {string} horizon     - '1M' | '3M' | '6M' | '1Y' | '5Y'
+ * @param {object} options     - { mode: 'simple'|'complex', metrics: {volatility, cyclePeriod, recentMomentum} }
  * @returns {{ points: number[], labels: string[], endValue: number, gain: number, gainPct: number }}
  */
-export function buildProjection(startPrice, annualRate, horizon) {
+export function buildProjection(startPrice, annualRate, horizon, options = {}) {
   const today = new Date()
 
   const horizonDays = {
@@ -379,6 +505,9 @@ export function buildProjection(startPrice, annualRate, horizon) {
   // Number of data points to generate (keep chart readable)
   const numPoints = horizon === '5Y' ? 60 : horizon === '1Y' ? 52 : horizon === '6M' ? 26 : horizon === '3M' ? 13 : 4
 
+  const { mode = 'simple', metrics = {} } = options
+  const { volatility = 0.02, cyclePeriod = 5, recentMomentum = 0 } = metrics
+
   const dailyRate = Math.pow(1 + annualRate, 1 / 252) - 1
   const stepDays = horizonDays / numPoints
 
@@ -387,7 +516,31 @@ export function buildProjection(startPrice, annualRate, horizon) {
 
   for (let i = 0; i <= numPoints; i++) {
     const daysFromNow = i * stepDays
-    const price = startPrice * Math.pow(1 + dailyRate, (daysFromNow / 1) * (252 / 365))
+    let price = startPrice * Math.pow(1 + dailyRate, (daysFromNow / 1) * (252 / 365))
+
+    if (mode === 'complex' && i > 0) {
+      // Add cyclical pattern: sine wave based on cycle period
+      const cyclePhase = ((i % cyclePeriod) / cyclePeriod) * Math.PI * 2
+      const cycleAmplitude = price * volatility * 0.5 // 50% of volatility magnitude
+      const cyclicOffset = Math.sin(cyclePhase) * cycleAmplitude
+
+      // Add expansion/contraction momentum phase shift
+      const phaseShiftDays = recentMomentum > 0 ? (cyclePeriod * 0.25) : (cyclePeriod * 0.75)
+      const momentumPhase = (((i + phaseShiftDays) % cyclePeriod) / cyclePeriod) * Math.PI * 2
+      const momentumOffset = Math.sin(momentumPhase) * cycleAmplitude * 0.4
+
+      // Add random noise based on historical volatility
+      const randomNoise = (Math.random() - 0.5) * 2 * price * volatility * 0.3
+
+      price += cyclicOffset + momentumOffset + randomNoise
+      price = Math.max(startPrice * 0.5, price) // prevent unrealistic crashes
+    } else if (mode === 'simple' && i > 0) {
+      // Simple mode: just add realistic volatility noise
+      const randomNoise = (Math.random() - 0.5) * 2 * price * volatility * 0.5
+      price += randomNoise
+      price = Math.max(startPrice * 0.5, price)
+    }
+
     points.push(Number(price.toFixed(2)))
 
     const date = new Date(today)
