@@ -505,7 +505,7 @@ export function buildProjection(startPrice, annualRate, horizon, options = {}) {
   // Number of data points to generate (keep chart readable)
   const numPoints = horizon === '5Y' ? 60 : horizon === '1Y' ? 52 : horizon === '6M' ? 26 : horizon === '3M' ? 13 : 4
 
-  const { mode = 'simple', metrics = {} } = options
+  const { mode = 'linear', metrics = {} } = options
   const { volatility = 0.02, cyclePeriod = 5, recentMomentum = 0 } = metrics
 
   const dailyRate = Math.pow(1 + annualRate, 1 / 252) - 1
