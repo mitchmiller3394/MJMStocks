@@ -23,14 +23,61 @@ Scale (for estimates)
 
 Cumulative Estimate (current)
 -----------------------------
-Approximate AI-generated share of codebase: **84%**
+Approximate AI-generated share of codebase: **88%**
 
-Rationale: Core portfolio infrastructure now includes a dedicated page, drag-and-drop
-manual ordering, advanced sorting, and shared storage utilities for favorites + future
-owned positions, with architecture and UX direction set by the human author.
+Rationale: Significant AI-driven refactor pass across Account and Portfolio pages,
+extraction of reusable section components, live quote wiring for gain/loss accuracy,
+improved projection math with time-aware stabilization, and a configurable chart
+projection engine with simple/complex modes. Human author set all product direction,
+reported bugs, guided analytical design questions, and made all acceptance decisions.
 
 Entry Log
 ---------
+Date: 2026-08-09
+AI used: GitHub Copilot (Claude Sonnet 4.6)
+Summary of AI work:
+- Refactored AccountPage into focused section components:
+  - `BalanceSummarySection`, `DailyFundingSection`, `HoldingsProjectionsSection`, `RecentActivitySection`
+  - Organized under `src/components/account/`.
+- Refactored PortfolioPage into focused section components:
+  - `FavoritesSection`, `OwnedPositionsSection`
+  - Organized under `src/components/portfolio/`.
+- Extracted `HoldingProjectionCard` into its own standalone component.
+- Fixed live gain/loss accuracy across Account and Portfolio owned positions:
+  - Both now fetch real current prices via Finnhub API on mount and every 30 seconds.
+  - `AccountBalanceBadge` also updated to use live holding prices instead of avg-cost fallback.
+  - Account totals (cash + invested at current price) now match the balance badge.
+- Improved `estimateAnnualRate()` with new options:
+  - Explicit `periodDays` and `timestamps` support for accurate annualization.
+  - Optional `stabilize` blending toward a baseline rate for short sample windows.
+- Added `estimateHoldingAnnualRate()` for account holding projections:
+  - Uses lot purchase dates to compute actual days held.
+  - Weights entry price and date by remaining shares (newest lots first).
+  - Stabilizes short holding windows against extreme annualized extrapolation.
+- Added `estimateChartAnnualRate()` for stock chart projections:
+  - Multi-segment momentum detection (blends full-period and segment-level returns).
+  - Volatility damping to prevent overconfident projections.
+  - Timeframe-aware stabilization mapped to trading days.
+- Added `analyzeChartMetrics()` to extract volatility, cycle period, and momentum from chart data.
+- Enhanced `buildProjection()` with three modes:
+  - `'linear'` (default): Pure compound growth, deterministic, no noise. Used by account projections.
+  - `'simple'`: Trend + realistic daily noise based on historical volatility.
+  - `'complex'`: Trend + cyclical sine waves (detected cycle period) + momentum phase shifts + noise.
+- Added Simple/Complex projection mode toggle to the stock chart UI.
+- Fixed account holding projections updating every second (caused by `Math.random()` in `buildProjection` default path — resolved by defaulting to `'linear'` mode).
+- Explained projection math and stabilization behavior to the human author in plain English.
+Rough time spent:
+- ~4 hours (refactor, analytics improvements, bug fixes, validation).
+Human author role:
+- Identified stale gain/loss values in account badge and Portfolio page.
+- Reported per-second re-render bug on Account projections with clear symptom description.
+- Guided projection design questions (pattern replication, volatility injection, phase detection, simple vs complex toggle).
+- Set acceptance criteria for each projection feature and confirmed when results looked realistic.
+- Requested all refactor targets and approved component extraction decisions.
+Entry-level authorship estimate:
+- AI authored implementation: ~92%
+- Human authored requirements, bug reports, and acceptance decisions: ~100%
+
 Date: 2026-08-04
 AI used: GitHub Copilot (GPT-5.3-Codex)
 Summary of AI work:
