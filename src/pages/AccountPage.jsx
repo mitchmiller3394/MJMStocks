@@ -1,33 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Card, Col, Container, Form, ProgressBar, Row } from 'react-bootstrap'
 import { Link, useNavigate } from 'react-router'
 import {
   ACCOUNT_UPDATE_EVENT_NAME,
-  buildProjection,
   canFundToday,
-  estimateAnnualRate,
   fundAccount,
   getAccount,
   getMsUntilMidnight,
-  getTotalPortfolioValue,
 } from '../data/accountStorage.js'
+import { getQuote } from '../data/finnhubClient.js'
+import HoldingProjectionCard from '../components/HoldingProjectionCard.jsx'
 
 const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 const pctFmt = (n) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
-
-const HORIZON_OPTIONS = [
-  { value: '1M', label: '1 Month' },
-  { value: '3M', label: '3 Months' },
-  { value: '6M', label: '6 Months' },
-  { value: '1Y', label: '1 Year' },
-  { value: '5Y', label: '5 Years' },
-]
-
-const SCENARIO_RATES = {
-  conservative: 0.05,
-  base: null,   // uses actual performance
-  optimistic: 0.20,
-}
 
 // ─── Funding countdown timer ──────────────────────────────────────────────────
 function useCountdown() {
@@ -47,170 +32,88 @@ function useCountdown() {
   return `${pad(h)}:${pad(m)}:${pad(s)}`
 }
 
-// ─── Holding projection card ──────────────────────────────────────────────────
-function HoldingProjectionCard({ holding, currentPrices }) {
-  const [horizon, setHorizon] = useState('1Y')
-  const [scenario, setScenario] = useState('base')
-  const [customRate, setCustomRate] = useState('')
-
-  const currentPrice = currentPrices[holding.symbol] ?? holding.avgCost
-  const currentValue = currentPrice * holding.shares
-  const costBasis = holding.avgCost * holding.shares
-  const unrealizedGain = currentValue - costBasis
-  const unrealizedPct = (unrealizedGain / costBasis) * 100
-
-  // We use the recent performance of this holding for the base rate
-  // Since we store avgCost as the base, compute rate from cost→current
-  const baseRate = estimateAnnualRate([holding.avgCost, currentPrice])
-
-  let projRate
-  if (scenario === 'custom') {
-    const parsed = parseFloat(customRate)
-    projRate = Number.isFinite(parsed) ? parsed / 100 : baseRate
-  } else if (scenario === 'base') {
-    projRate = baseRate
-  } else {
-    projRate = SCENARIO_RATES[scenario]
-  }
-
-  const proj = buildProjection(currentPrice, projRate, horizon)
-  const projectedHoldingValue = proj.endValue * holding.shares
-  const projectedGain = projectedHoldingValue - costBasis
-  const projectedGainPct = (projectedGain / costBasis) * 100
-
-  const gainClass = unrealizedGain >= 0 ? 'text-success' : 'text-danger'
-  const projClass = projectedGain >= 0 ? 'text-success' : 'text-danger'
-
-  return (
-    <Card className="account-holding-card border-0 p-3 p-sm-4 mb-3">
-      <div className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
-        <div>
-          <h3 className="account-holding-symbol mb-0">{holding.symbol}</h3>
-          <p className="account-subtitle mb-0">
-            {holding.shares % 1 === 0 ? holding.shares : holding.shares.toFixed(4)} shares
-            &nbsp;·&nbsp;Avg cost {currencyFmt.format(holding.avgCost)}
-          </p>
-        </div>
-        <div className="text-end">
-          <div className="account-holding-value">{currencyFmt.format(currentValue)}</div>
-          <div className={`account-holding-change ${gainClass}`}>
-            {currencyFmt.format(unrealizedGain)} ({pctFmt(unrealizedPct)})
-          </div>
-          <div className="account-subtitle">
-            Current {currencyFmt.format(currentPrice)}/share
-          </div>
-        </div>
-      </div>
-
-      {/* Projection controls */}
-      <div className="account-proj-controls d-flex flex-wrap gap-2 mb-3">
-        <div className="d-flex align-items-center gap-1">
-          <span className="account-subtitle me-1">Horizon:</span>
-          {HORIZON_OPTIONS.map((h) => (
-            <button
-              key={h.value}
-              type="button"
-              className={`btn btn-xs ${horizon === h.value ? 'btn-primary' : 'btn-outline-secondary'}`}
-              onClick={() => setHorizon(h.value)}
-            >
-              {h.value}
-            </button>
-          ))}
-        </div>
-        <div className="d-flex align-items-center gap-1">
-          <span className="account-subtitle me-1">Scenario:</span>
-          {['conservative', 'base', 'optimistic', 'custom'].map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`btn btn-xs ${scenario === s ? 'btn-primary' : 'btn-outline-secondary'} text-capitalize`}
-              onClick={() => setScenario(s)}
-            >
-              {s === 'base' ? 'Actual' : s}
-            </button>
-          ))}
-        </div>
-        {scenario === 'custom' && (
-          <div className="d-flex align-items-center gap-2">
-            <Form.Control
-              type="number"
-              size="sm"
-              className="account-custom-rate-input"
-              placeholder="Rate %"
-              value={customRate}
-              onChange={(e) => setCustomRate(e.target.value)}
-              step="0.5"
-            />
-            <span className="account-subtitle">% annual</span>
-          </div>
-        )}
-      </div>
-
-      {/* Projection summary */}
-      <div className="account-proj-summary d-flex flex-wrap gap-4 align-items-center">
-        <div>
-          <div className="account-subtitle mb-0">Assumed rate</div>
-          <div className="account-proj-rate">
-            {projRate >= 0 ? '+' : ''}{(projRate * 100).toFixed(1)}% / yr
-          </div>
-        </div>
-        <div>
-          <div className="account-subtitle mb-0">Projected value in {horizon}</div>
-          <div className={`account-proj-value ${projClass}`}>
-            {currencyFmt.format(projectedHoldingValue)}
-          </div>
-        </div>
-        <div>
-          <div className="account-subtitle mb-0">Projected gain vs cost</div>
-          <div className={`account-proj-value ${projClass}`}>
-            {currencyFmt.format(projectedGain)} ({pctFmt(projectedGainPct)})
-          </div>
-        </div>
-        {scenario === 'base' && (
-          <Badge
-            bg="info"
-            className="align-self-center"
-            style={{ fontSize: '0.7rem', opacity: 0.85 }}
-          >
-            Based on avg cost → current price
-          </Badge>
-        )}
-        {scenario !== 'base' && (
-          <Badge
-            bg="secondary"
-            className="align-self-center"
-            style={{ fontSize: '0.7rem', opacity: 0.85 }}
-          >
-            Projection — not financial advice
-          </Badge>
-        )}
-      </div>
-    </Card>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 function AccountPage() {
   const navigate = useNavigate()
   const [account, setAccount] = useState(() => getAccount())
-  const [totals, setTotals] = useState(() => getTotalPortfolioValue())
+  const [holdingPrices, setHoldingPrices] = useState({})
   const [fundAmount, setFundAmount] = useState(500)
   const [fundError, setFundError] = useState(null)
   const [fundSuccess, setFundSuccess] = useState(false)
   const [canFund, setCanFund] = useState(() => canFundToday())
   const countdown = useCountdown()
 
+  const totals = useMemo(() => {
+    const invested = account.holdings.reduce((sum, holding) => {
+      const price =
+        typeof holdingPrices[holding.symbol] === 'number'
+          ? holdingPrices[holding.symbol]
+          : holding.avgCost
+      return sum + price * holding.shares
+    }, 0)
+
+    const total = account.cashBalance + invested
+    const gainLoss = total - account.totalFunded
+
+    return {
+      invested,
+      total,
+      gainLoss,
+      totalFunded: account.totalFunded,
+    }
+  }, [account, holdingPrices])
+
   const refreshAccount = useCallback(() => {
     const fresh = getAccount()
     setAccount(fresh)
-    setTotals(getTotalPortfolioValue())
     setCanFund(canFundToday())
   }, [])
+
+  const refreshHoldingPrices = useCallback(async () => {
+    const symbols = account.holdings.map((holding) => holding.symbol)
+    if (symbols.length === 0) {
+      setHoldingPrices({})
+      return
+    }
+
+    const results = await Promise.all(
+      symbols.map((symbol) =>
+        getQuote(symbol)
+          .then((quote) => ({ symbol, price: quote?.currentPrice }))
+          .catch(() => ({ symbol, price: undefined })),
+      ),
+    )
+
+    setHoldingPrices((prev) => {
+      const next = { ...prev }
+      results.forEach(({ symbol, price }) => {
+        if (typeof price === 'number' && Number.isFinite(price)) {
+          next[symbol] = price
+        }
+      })
+      return next
+    })
+  }, [account.holdings])
 
   useEffect(() => {
     window.addEventListener(ACCOUNT_UPDATE_EVENT_NAME, refreshAccount)
     return () => window.removeEventListener(ACCOUNT_UPDATE_EVENT_NAME, refreshAccount)
   }, [refreshAccount])
+
+  useEffect(() => {
+    refreshHoldingPrices()
+  }, [refreshHoldingPrices])
+
+  useEffect(() => {
+    if (account.holdings.length === 0) return undefined
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      refreshHoldingPrices()
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [account.holdings.length, refreshHoldingPrices])
 
   function handleFund() {
     setFundError(null)
@@ -375,7 +278,7 @@ function AccountPage() {
                   <HoldingProjectionCard
                     key={h.symbol}
                     holding={h}
-                    currentPrices={{}}
+                    currentPrice={holdingPrices[h.symbol]}
                   />
                 ))}
               </>

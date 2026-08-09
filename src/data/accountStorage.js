@@ -230,17 +230,132 @@ export function sellStock(symbol, shares, price) {
  * Compute an annualized rate from a price series (using first/last prices).
  * Returns decimal (e.g. 0.12 for 12% annualized).
  */
-export function estimateAnnualRate(points) {
+export function estimateAnnualRate(points, options = {}) {
   if (!Array.isArray(points) || points.length < 2) return 0.07 // default 7%
+
   const first = points[0]
   const last = points[points.length - 1]
-  if (!first || !last) return 0.07
-  const periods = points.length - 1
-  // Convert period return to annualized assuming ~252 trading days
+  if (
+    !Number.isFinite(first)
+    || !Number.isFinite(last)
+    || first <= 0
+    || last <= 0
+  ) return 0.07
+
+  const {
+    periodDays,
+    timestamps,
+    baselineRate = 0.08,
+    stabilizationDays = 252,
+    stabilize = false,
+  } = options
+
+  const periods = Math.max(1, points.length - 1)
   const periodReturn = (last - first) / first
-  const annualized = Math.pow(1 + periodReturn, 252 / periods) - 1
+
+  let annualized
+  if (Number.isFinite(periodDays) && periodDays > 0) {
+    annualized = Math.pow(1 + periodReturn, 365 / periodDays) - 1
+  } else if (Array.isArray(timestamps) && timestamps.length >= 2) {
+    const start = new Date(timestamps[0]).getTime()
+    const end = new Date(timestamps[timestamps.length - 1]).getTime()
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      const days = Math.max(1, (end - start) / 86_400_000)
+      annualized = Math.pow(1 + periodReturn, 365 / days) - 1
+    } else {
+      annualized = Math.pow(1 + periodReturn, 252 / periods) - 1
+    }
+  } else {
+    // Backward-compatible behavior: assume one trading day per period.
+    annualized = Math.pow(1 + periodReturn, 252 / periods) - 1
+  }
+
+  if (stabilize && Number.isFinite(stabilizationDays) && stabilizationDays > 0) {
+    const effectiveDays =
+      Number.isFinite(periodDays) && periodDays > 0
+        ? periodDays
+        : periods * (365 / 252)
+
+    const sampleWeight = Math.min(1, Math.max(0, effectiveDays / stabilizationDays))
+    annualized = baselineRate + (annualized - baselineRate) * sampleWeight
+  }
+
   // Cap between -95% and +500% to prevent nonsense projections
   return Math.min(5, Math.max(-0.95, annualized))
+}
+
+/**
+ * Estimate annualized performance for a holding using lot timing and current price.
+ * This avoids overreacting when only a few days of ownership are available.
+ */
+export function estimateHoldingAnnualRate(holding, currentPrice, asOf = new Date()) {
+  if (!holding || !Number.isFinite(currentPrice) || currentPrice <= 0) return 0.07
+
+  const sharesHeld = Number.isFinite(holding.shares) ? holding.shares : 0
+  const lots = Array.isArray(holding.lots) ? holding.lots : []
+  const asOfMs = new Date(asOf).getTime()
+
+  if (!Number.isFinite(asOfMs)) return estimateAnnualRate([holding.avgCost, currentPrice])
+
+  const validLots = lots
+    .map((lot) => ({
+      shares: Number(lot?.shares),
+      price: Number(lot?.price),
+      dateMs: new Date(lot?.date).getTime(),
+    }))
+    .filter((lot) => (
+      Number.isFinite(lot.shares)
+      && lot.shares > 0
+      && Number.isFinite(lot.price)
+      && lot.price > 0
+      && Number.isFinite(lot.dateMs)
+      && lot.dateMs <= asOfMs
+    ))
+
+  if (validLots.length === 0 || sharesHeld <= 0) {
+    return estimateAnnualRate([holding.avgCost, currentPrice], {
+      stabilize: true,
+      stabilizationDays: 252,
+      baselineRate: 0.08,
+    })
+  }
+
+  // Approximate currently-held shares by taking newest lots first.
+  let remaining = sharesHeld
+  const effectiveLots = []
+  for (let i = validLots.length - 1; i >= 0 && remaining > 0; i -= 1) {
+    const lot = validLots[i]
+    const takeShares = Math.min(remaining, lot.shares)
+    if (takeShares > 0) {
+      effectiveLots.push({ ...lot, shares: takeShares })
+      remaining -= takeShares
+    }
+  }
+
+  if (effectiveLots.length === 0) {
+    return estimateAnnualRate([holding.avgCost, currentPrice], {
+      stabilize: true,
+      stabilizationDays: 252,
+      baselineRate: 0.08,
+    })
+  }
+
+  const totalEffectiveShares = effectiveLots.reduce((sum, lot) => sum + lot.shares, 0)
+  const weightedEntryPrice =
+    effectiveLots.reduce((sum, lot) => sum + lot.price * lot.shares, 0)
+    / totalEffectiveShares
+  const weightedEntryMs =
+    effectiveLots.reduce((sum, lot) => sum + lot.dateMs * lot.shares, 0)
+    / totalEffectiveShares
+
+  const daysHeld = Math.max(1, (asOfMs - weightedEntryMs) / 86_400_000)
+
+  return estimateAnnualRate([weightedEntryPrice, currentPrice], {
+    periodDays: daysHeld,
+    stabilize: true,
+    stabilizationDays: 252,
+    baselineRate: 0.08,
+  })
 }
 
 /**

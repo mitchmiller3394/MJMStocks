@@ -26,7 +26,6 @@ import {
 import {
   ACCOUNT_UPDATE_EVENT_NAME,
   getAllHoldings,
-  getAccount,
 } from '../data/accountStorage.js'
 import SortableStockCard from '../components/SortableStockCard.jsx'
 import MarketClock from '../components/MarketClock.jsx'
@@ -95,6 +94,10 @@ function PortfolioPage() {
   const [quotesBySymbol, setQuotesBySymbol] = useState({})
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false)
   const [lastQuotesRefreshAt, setLastQuotesRefreshAt] = useState(0)
+  const ownedSymbolsKey = useMemo(
+    () => ownedPositions.map((pos) => pos.symbol).sort().join('|'),
+    [ownedPositions],
+  )
 
   useEffect(() => {
     setFavoriteSymbols(favoriteSymbols)
@@ -105,6 +108,50 @@ function PortfolioPage() {
     window.addEventListener(ACCOUNT_UPDATE_EVENT_NAME, refresh)
     return () => window.removeEventListener(ACCOUNT_UPDATE_EVENT_NAME, refresh)
   }, [])
+
+  useEffect(() => {
+    const symbols = ownedPositions.map((pos) => pos.symbol)
+    if (symbols.length === 0) {
+      setOwnedQuotes({})
+      return undefined
+    }
+
+    let canceled = false
+
+    const refreshOwnedQuotes = async () => {
+      const quoteResults = await Promise.all(
+        symbols.map((symbol) =>
+          getQuote(symbol)
+            .then((quote) => ({ symbol, price: quote?.currentPrice }))
+            .catch(() => ({ symbol, price: undefined })),
+        ),
+      )
+
+      if (canceled) return
+
+      setOwnedQuotes((prev) => {
+        const next = { ...prev }
+        quoteResults.forEach(({ symbol, price }) => {
+          if (typeof price === 'number' && Number.isFinite(price)) {
+            next[symbol] = price
+          }
+        })
+        return next
+      })
+    }
+
+    refreshOwnedQuotes()
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      refreshOwnedQuotes()
+    }, 30_000)
+
+    return () => {
+      canceled = true
+      window.clearInterval(intervalId)
+    }
+  }, [ownedSymbolsKey])
   const manualSymbols = useMemo(() => {
     const filteredManual = manualOrder.filter((symbol) =>
       favoriteSymbols.includes(symbol),
