@@ -1,3 +1,5 @@
+import { SP500_SYMBOLS } from './sp500Symbols.js'
+
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
 const FINNHUB_TOKEN = import.meta.env.VITE_FINNHUB_API_KEY?.trim() ?? 'd8h2skhr01qhjpmqc330d8h2skhr01qhjpmqc33g'
 
@@ -313,13 +315,13 @@ export async function searchUsSymbols(query) {
     .filter((item) => /^[A-Z.]{1,10}$/.test(item.symbol))
 }
 
-export async function getQuote(symbol) {
+export async function getQuote(symbol, { cacheTtlMs = 30 * 1000 } = {}) {
   const normalized = symbol.toUpperCase()
   const cacheKey = `quote:${normalized}`
 
   const response = await fetchWithCache('/quote', { symbol: normalized }, {
     cacheKey,
-    ttlMs: 30 * 1000,
+    ttlMs: cacheTtlMs,
   })
 
   const quote = response.data || {}
@@ -509,4 +511,151 @@ export async function getEodHistoricalData(symbol, timeframe = '1M') {
 
     throw error
   }
+}
+
+export async function getResearchUniverse(limit = 500) {
+  const max = Math.max(25, Number(limit) || 500)
+  return SP500_SYMBOLS
+    .slice(0, max)
+    .map((symbol) => ({ symbol, name: symbol }))
+}
+
+export async function getResearchSnapshot({
+  limit = 500,
+  onProgress,
+  onBatch,
+  delayMs = 150,
+  batchSize = 10,
+  quoteCacheTtlMs = 15 * 60 * 1000,
+} = {}) {
+  const universe = await getResearchUniverse(limit)
+  const total = universe.length
+  const rows = []
+
+  for (let offset = 0; offset < universe.length; offset += batchSize) {
+    const batch = universe.slice(offset, offset + batchSize)
+
+    const batchRows = await Promise.all(
+      batch.map(async (item) => {
+        try {
+          const quote = await getQuote(item.symbol, { cacheTtlMs: quoteCacheTtlMs })
+          if (typeof quote.currentPrice === 'number' && Number.isFinite(quote.currentPrice)) {
+            return {
+              symbol: item.symbol,
+              name: item.name,
+              quote,
+            }
+          }
+        } catch {
+          // swallow per-symbol failure so one bad quote doesn't break leaderboard generation
+        }
+
+        return null
+      }),
+    )
+
+    batchRows.filter(Boolean).forEach((row) => rows.push(row))
+
+    const completed = Math.min(total, offset + batch.length)
+    const snapshot = {
+      rows: [...rows],
+      updatedAt: Date.now(),
+      universeSize: total,
+    }
+
+    onBatch?.({
+      completed,
+      total,
+      symbol: batch[batch.length - 1]?.symbol ?? '',
+      rows: snapshot.rows,
+      snapshot,
+    })
+
+    onProgress?.({
+      completed,
+      total,
+      symbol: batch[batch.length - 1]?.symbol ?? '',
+    })
+
+    if (delayMs > 0 && offset + batchSize < universe.length) {
+      await sleep(delayMs)
+    }
+  }
+
+  return {
+    rows,
+    updatedAt: Date.now(),
+    universeSize: total,
+  }
+}
+
+export async function getCompanyProfile(symbol) {
+  const normalized = String(symbol || '').toUpperCase().trim()
+  if (!normalized) return null
+
+  const response = await fetchWithCache('/stock/profile2', { symbol: normalized }, {
+    cacheKey: `profile:${normalized}`,
+    ttlMs: 12 * 60 * 60 * 1000,
+  })
+
+  const profile = response.data
+  if (!profile || typeof profile !== 'object') return null
+
+  return {
+    symbol: normalized,
+    name: profile.name,
+    exchange: profile.exchange,
+    currency: profile.currency,
+    ipo: profile.ipo,
+    marketCapitalization:
+      typeof profile.marketCapitalization === 'number' && Number.isFinite(profile.marketCapitalization)
+        ? profile.marketCapitalization
+        : undefined,
+    shareOutstanding:
+      typeof profile.shareOutstanding === 'number' && Number.isFinite(profile.shareOutstanding)
+        ? profile.shareOutstanding
+        : undefined,
+    weburl: profile.weburl,
+    logo: profile.logo,
+    finnhubIndustry: profile.finnhubIndustry,
+    stale: response.stale,
+    updatedAt: response.updatedAt,
+  }
+}
+
+export async function getCompanyNews(symbol, { daysBack = 14, limit = 8 } = {}) {
+  const normalized = String(symbol || '').toUpperCase().trim()
+  if (!normalized) return []
+
+  const to = new Date()
+  const from = new Date(to)
+  from.setDate(to.getDate() - Math.max(1, daysBack))
+
+  const toStr = to.toISOString().slice(0, 10)
+  const fromStr = from.toISOString().slice(0, 10)
+
+  const response = await fetchWithCache('/company-news', {
+    symbol: normalized,
+    from: fromStr,
+    to: toStr,
+  }, {
+    cacheKey: `news:${normalized}:${fromStr}:${toStr}`,
+    ttlMs: 15 * 60 * 1000,
+  })
+
+  const rows = Array.isArray(response.data) ? response.data : []
+  return rows
+    .filter((item) => item && typeof item === 'object')
+    .slice(0, Math.max(1, limit))
+    .map((item) => ({
+      id: item.id,
+      headline: item.headline,
+      source: item.source,
+      datetime:
+        typeof item.datetime === 'number' && Number.isFinite(item.datetime)
+          ? item.datetime * 1000
+          : undefined,
+      url: item.url,
+      summary: item.summary,
+    }))
 }

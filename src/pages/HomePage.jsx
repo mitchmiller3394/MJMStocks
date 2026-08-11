@@ -19,7 +19,6 @@ import {
   ACCOUNT_UPDATE_EVENT_NAME,
   analyzeChartMetrics,
   buildProjection,
-  estimateAnnualRate,
   estimateChartAnnualRate,
   getHolding,
 } from '../data/accountStorage.js'
@@ -381,6 +380,15 @@ function HomePage() {
                 onToggleProjection={() => setProjectionEnabled((p) => !p)}
                 costBasis={holding ? holding.avgCost : null}
               />
+              <div className="d-flex justify-content-end mb-3">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-info"
+                  onClick={() => navigate(`/research?symbol=${encodeURIComponent(selectedStock.symbol)}`)}
+                >
+                  Research {selectedStock.symbol}
+                </button>
+              </div>
               <BuySellPanel
                 symbol={selectedStock.symbol}
                 currentPrice={typeof currentPrice === 'number' ? currentPrice : null}

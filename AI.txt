@@ -23,16 +23,77 @@ Scale (for estimates)
 
 Cumulative Estimate (current)
 -----------------------------
-Approximate AI-generated share of codebase: **88%**
+Approximate AI-generated share of codebase: **90%**
 
-Rationale: Significant AI-driven refactor pass across Account and Portfolio pages,
-extraction of reusable section components, live quote wiring for gain/loss accuracy,
-improved projection math with time-aware stabilization, and a configurable chart
-projection engine with simple/complex modes. Human author set all product direction,
-reported bugs, guided analytical design questions, and made all acceptance decisions.
+Rationale: All prior work plus a full Research page build (8 leaderboards, S&P 500 universe,
+progressive batch loading, inline stock detail panel), CORS/rate-limit architecture fixes,
+hardcoded symbol list to avoid broken API endpoints, removal of unavailable volume metric
+in favor of intraday range %, and multi-file cleanup/organization. Human author set all
+product direction, identified API constraints and rate-limit symptoms, and made all acceptance
+decisions.
 
 Entry Log
 ---------
+Date: 2026-08-10
+AI used: GitHub Copilot (Claude Sonnet 4.6)
+Summary of AI work:
+- Built the Research page (`src/pages/ResearchPage.jsx`) — a market research dashboard showing
+  S&P 500 leaderboards with an inline stock detail panel.
+  - 8 leaderboards: Highest Price, Largest % Gain, Largest $ Gain, Hot Stocks, Cool Stocks,
+    Steadiest Stocks, Trending/Popular, Largest Intraday Range %.
+  - Top-5 and Bottom-5 toggle on each board.
+  - Inline detail panel: quote KPIs, company profile, 1W/1M/3M performance stats, recent news.
+  - Favorites toggle integrated with Portfolio watchlist from within Research.
+- Implemented progressive batch loading for the Research snapshot:
+  - Processes S&P 500 universe one symbol at a time (1 per ~1,100ms) to respect Finnhub's
+    free-tier rate limit of ~60 requests/minute.
+  - **Initial full load takes approximately 9–10 minutes** for all ~502 S&P 500 symbols due
+    to this rate limiting. This is a known, intentional tradeoff on the free API tier.
+  - Snapshot is cached to localStorage (key: `mjmstocks.researchSnapshot.v1`) and reused for
+    up to 10 minutes before a manual refresh is allowed.
+  - UI shows a progress bar and live status line ("Loading 47/502 — AAPL") during refresh.
+  - `onBatch` callback streams partial results to the UI in batches of 5 so boards populate
+    progressively rather than waiting for the full load to complete.
+  - A 10-minute cooldown prevents accidental rapid re-fetches that would exhaust rate limits.
+- Resolved CORS/API issues for the S&P 500 universe:
+  - Finnhub `/stock/symbol` endpoint redirects to a static CDN host that blocks browser CORS
+    — abandoned.
+  - Alpha Vantage `LISTING_STATUS` CSV endpoint also hit CORS in browser context — abandoned.
+  - Final solution: hardcoded S&P 500 constituent list (~502 symbols from Wikipedia, Aug 2026)
+    in `src/data/sp500Symbols.js`, imported by `finnhubClient.js`. This avoids all runtime
+    universe-fetching issues entirely.
+- Removed `volume` field from `getQuote()` return value:
+  - Finnhub free-tier quote API does not reliably return trading volume.
+  - Replaced the "Most Traded (Volume)" leaderboard and KPI tile with "Largest Intraday Range %"
+    (computed from `(high - low) / open * 100`), which uses data fields that are available.
+- Added Research route and nav link:
+  - `/research` route in `App.jsx`, "Research" added to `SiteHeader.jsx` nav.
+  - "Research {symbol}" button on `HomePage.jsx` chart panel navigates to Research with
+    `?symbol=...` query param to pre-open the inline detail panel.
+- Added `src/styles/ResearchPage.css` for Research-specific layout and card styles.
+- In-memory `detailCacheRef` (Map) in ResearchPage caches profile/news/stats per symbol for
+  the duration of the browser session to minimize repeated API calls when switching symbols.
+Known limitations / honest notes:
+  - The initial Research page load is **slow by design** on the free Finnhub tier. Users should
+    expect ~9–10 minutes for a full S&P 500 snapshot. Subsequent visits within 10 minutes use
+    the cached snapshot instantly.
+  - The S&P 500 constituent list is hardcoded as of August 2026 and will drift over time as
+    index composition changes. It is not dynamically updated.
+  - Volume data is not available from the Finnhub free-tier quote endpoint and is not shown
+    anywhere in the app.
+Rough time spent:
+- ~5 hours (Research page build, API debugging, rate-limit architecture, cleanup, documentation).
+Human author role:
+- Defined all Research page requirements and leaderboard categories.
+- Identified CORS failures and rate-limit symptoms, directed the pivot to a hardcoded symbol list.
+- Noted that volume data was always empty and requested a replacement metric.
+- Approved intraday range % as the replacement.
+- Directed cleanup and organizational work (sp500Symbols.js split, volume removal).
+- Requested honest documentation of rate-limit slowness.
+Entry-level authorship estimate:
+- AI authored implementation: ~93%
+- Human authored requirements, API constraint identification, and acceptance decisions: ~100%
+
 Date: 2026-08-09
 AI used: GitHub Copilot (Claude Sonnet 4.6)
 Summary of AI work:

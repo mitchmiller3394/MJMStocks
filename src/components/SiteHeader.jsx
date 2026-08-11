@@ -22,6 +22,13 @@ function SiteHeader() {
             >
               Portfolio
             </Nav.Link>
+            <Nav.Link
+              as="button"
+              type="button"
+              onClick={() => navigate('/research')}
+            >
+              Research
+            </Nav.Link>
             <AccountBalanceBadge />
           </Nav>
         </Navbar.Collapse>

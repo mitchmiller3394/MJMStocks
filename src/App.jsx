@@ -3,11 +3,13 @@ import './App.css'
 import './styles/StockSearchBar.css'
 import './styles/PortfolioPage.css'
 import './styles/AccountPage.css'
+import './styles/ResearchPage.css'
 
 import AppLayout from './components/AppLayout.jsx'
 import AccountPage from './pages/AccountPage.jsx'
 import HomePage from './pages/HomePage.jsx'
 import PortfolioPage from './pages/PortfolioPage.jsx'
+import ResearchPage from './pages/ResearchPage.jsx'
 import TransactionsPage from './pages/TransactionsPage.jsx'
 
 function App() {
@@ -17,6 +19,7 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
+          <Route path="/research" element={<ResearchPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
         </Route>
