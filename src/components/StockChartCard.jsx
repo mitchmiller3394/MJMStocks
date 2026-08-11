@@ -282,6 +282,8 @@ function StockChartCard({
               type="button"
               className={`btn btn-sm ${timeframe === option.value ? 'btn-primary' : 'btn-outline-light'}`}
               onClick={() => onTimeframeChange(option.value)}
+              aria-pressed={timeframe === option.value}
+              aria-label={`Set chart timeframe to ${option.label}`}
             >
               {option.label}
             </button>
@@ -296,6 +298,7 @@ function StockChartCard({
             className="btn btn-sm btn-outline-light"
             onClick={onRefresh}
             disabled={isRefreshing || refreshDisabled}
+            aria-label="Refresh current quote"
           >
             {isRefreshing ? 'Refreshing…' : 'Refresh quote'}
           </button>
@@ -306,6 +309,8 @@ function StockChartCard({
             type="button"
             className={`btn btn-sm ${liveEnabled ? 'btn-success' : 'btn-outline-success'}`}
             onClick={onToggleLive}
+            aria-pressed={liveEnabled}
+            aria-label={liveEnabled ? 'Disable live quote updates' : 'Enable live quote updates'}
           >
             {liveEnabled ? 'Disable live' : 'Enable live'} ({liveStatusLabel})
           </button>
@@ -320,6 +325,8 @@ function StockChartCard({
             type="button"
             className={`btn btn-sm proj-toggle-btn ${projectionEnabled ? 'btn-warning' : 'btn-outline-warning'}`}
             onClick={onToggleProjection}
+            aria-pressed={projectionEnabled}
+            aria-label={projectionEnabled ? 'Hide projection overlay' : 'Show projection overlay'}
           >
             {projectionEnabled ? '📈 Hide Projection' : '📈 Show Projection'}
           </button>
@@ -334,6 +341,8 @@ function StockChartCard({
               type="button"
               className={`btn btn-xs ${projectionMode === 'simple' ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => onProjectionModeChange?.('simple')}
+              aria-pressed={projectionMode === 'simple'}
+              aria-label="Use simple projection mode"
             >
               Simple
             </button>
@@ -341,6 +350,8 @@ function StockChartCard({
               type="button"
               className={`btn btn-xs ${projectionMode === 'complex' ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => onProjectionModeChange?.('complex')}
+              aria-pressed={projectionMode === 'complex'}
+              aria-label="Use complex projection mode"
             >
               Complex
             </button>
@@ -353,6 +364,8 @@ function StockChartCard({
                 type="button"
                 className={`btn btn-xs ${projectionHorizon === h ? 'btn-primary' : 'btn-outline-secondary'}`}
                 onClick={() => onProjectionHorizonChange?.(h)}
+                aria-pressed={projectionHorizon === h}
+                aria-label={`Set projection horizon to ${h}`}
               >
                 {h}
               </button>
@@ -372,7 +385,12 @@ function StockChartCard({
       )}
 
       <div className="chart-wrap">
-        <Line data={stockData} options={stockOptions} />
+        <Line
+          data={stockData}
+          options={stockOptions}
+          role="img"
+          aria-label={`${symbol} price chart for ${timeframeLabel}`}
+        />
       </div>
     </Card>
   )

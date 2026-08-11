@@ -331,6 +331,8 @@ function ResearchPage() {
                 type="button"
                 className={`btn btn-sm ${showBottom ? 'btn-warning' : 'btn-outline-warning'}`}
                 onClick={() => setShowBottom((prev) => !prev)}
+                aria-pressed={showBottom}
+                aria-label={showBottom ? 'Switch to top 25 leaderboard results' : 'Switch to bottom 25 leaderboard results'}
               >
                 {showBottom ? 'Showing Bottom 25' : 'Showing Top 25'}
               </button>
@@ -339,13 +341,14 @@ function ResearchPage() {
                 className="btn btn-sm btn-outline-light"
                 disabled={!canRefresh || isRefreshing}
                 onClick={refreshSnapshot}
+                aria-label="Refresh market research snapshot"
               >
                 {isRefreshing ? 'Refreshing…' : 'Refresh Snapshot'}
               </button>
             </div>
           </div>
 
-          <div className="research-meta mb-4">
+          <div className="research-meta mb-4" aria-live="polite">
             {refreshedLabel && <span>Last snapshot: {refreshedLabel}</span>}
             <span className="mx-2">•</span>
             <span>Universe: {universeSize || 0} symbols</span>
@@ -368,6 +371,7 @@ function ResearchPage() {
                 className="research-progress-bar"
                 animated
                 striped
+                aria-label="Research snapshot loading progress"
               />
               <div className="research-progress-label mt-2">
                 Loading research snapshot{progress.symbol ? ` • latest: ${progress.symbol}` : ''}
@@ -382,7 +386,7 @@ function ResearchPage() {
           )}
 
           {refreshError && (
-            <p className="text-danger mb-3">{refreshError}</p>
+            <p className="text-danger mb-3" role="alert">{refreshError}</p>
           )}
 
           <Row className="g-3 mb-4">
@@ -393,43 +397,41 @@ function ResearchPage() {
                     <h2 className="research-board-title mb-0">{board.title}</h2>
                     <span className="stock-subtitle">{showBottom ? 'Bottom' : 'Top'} 25</span>
                   </div>
-                  <div className="research-board-list">
+                  <div className="research-board-list" aria-label={`${board.title} leaderboard`}>
                     {board.rows.map((row, index) => {
                       const isActive = selectedSymbol === row.symbol
                       const isFav = favorites.includes(row.symbol)
 
                       return (
-                        <button
+                        <div
                           key={`${board.key}:${row.symbol}`}
-                          type="button"
                           className={`research-row ${isActive ? 'is-active' : ''}`}
-                          onClick={() => setSelectedSymbol(row.symbol)}
                         >
                           <span className="research-rank">{index + 1}</span>
-                          <span className="research-symbol-wrap">
-                            <span className="research-symbol">{row.symbol}</span>
-                            <span className="research-name">{row.name}</span>
-                          </span>
-                          <span className="research-value">{board.format(row[board.field])}</span>
-                          <span
-                            className="research-fav"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              toggleFavorite(row.symbol)
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            title={isFav ? 'Remove favorite' : 'Add favorite'}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                toggleFavorite(row.symbol)
-                              }
-                            }}
+                          <button
+                            type="button"
+                            className="research-row-select"
+                            onClick={() => setSelectedSymbol(row.symbol)}
+                            aria-pressed={isActive}
+                            aria-label={`Select ${row.symbol} ${row.name}. ${board.title}: ${board.format(row[board.field])}`}
                           >
-                            {isFav ? '★' : '☆'}
-                          </span>
-                        </button>
+                            <span className="research-symbol-wrap">
+                              <span className="research-symbol">{row.symbol}</span>
+                              <span className="research-name">{row.name}</span>
+                            </span>
+                            <span className="research-value">{board.format(row[board.field])}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="research-fav-btn"
+                            title={isFav ? 'Remove favorite' : 'Add favorite'}
+                            aria-label={isFav ? `Remove ${row.symbol} from favorites` : `Add ${row.symbol} to favorites`}
+                            aria-pressed={isFav}
+                            onClick={() => toggleFavorite(row.symbol)}
+                          >
+                            <span className="research-fav" aria-hidden="true">{isFav ? '★' : '☆'}</span>
+                          </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -438,18 +440,24 @@ function ResearchPage() {
             ))}
           </Row>
 
-          <Card className="research-detail-card border-0 p-3 p-sm-4">
+          <Card className="research-detail-card border-0 p-3 p-sm-4" aria-busy={detailLoading}>
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
               <h2 className="account-section-title mb-0">Stock Research Detail</h2>
               {selectedRow && (
                 <div className="d-flex align-items-center gap-2">
-                  <Link className="btn btn-sm btn-outline-light" to={`/?symbol=${encodeURIComponent(selectedRow.symbol)}`}>
+                  <Link
+                    className="btn btn-sm btn-outline-light"
+                    to={`/?symbol=${encodeURIComponent(selectedRow.symbol)}`}
+                    aria-label={`Open ${selectedRow.symbol} chart on home page`}
+                  >
                     Open Chart
                   </Link>
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-warning"
                     onClick={() => toggleFavorite(selectedRow.symbol)}
+                    aria-pressed={favorites.includes(selectedRow.symbol)}
+                    aria-label={favorites.includes(selectedRow.symbol) ? `Remove ${selectedRow.symbol} from favorites` : `Add ${selectedRow.symbol} to favorites`}
                   >
                     {favorites.includes(selectedRow.symbol) ? 'Unfavorite' : 'Favorite'} {selectedRow.symbol}
                   </button>
@@ -485,7 +493,7 @@ function ResearchPage() {
                         <Col xs={12} lg={6}>
                           <Card className="research-subcard border-0 p-3 h-100">
                             <h4 className="research-subtitle mb-2">Company</h4>
-                            <p className="mb-1">{profile?.name ?? selectedRow.name}</p>
+                            <p className="research-company-name mb-1">{profile?.name ?? selectedRow.name}</p>
                             <p className="stock-subtitle mb-1">Industry: {profile?.finnhubIndustry || 'N/A'}</p>
                             <p className="stock-subtitle mb-1">Exchange: {profile?.exchange || 'N/A'}</p>
                             <p className="stock-subtitle mb-1">IPO: {profile?.ipo || 'N/A'}</p>
@@ -515,7 +523,14 @@ function ResearchPage() {
                           {news.map((item) => (
                             <li key={item.id || item.url}>
                               {item.url ? (
-                                <a href={item.url} target="_blank" rel="noreferrer">{item.headline || 'Untitled headline'}</a>
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label={`${item.headline || 'Untitled headline'} (opens in a new tab)`}
+                                >
+                                  {item.headline || 'Untitled headline'}
+                                </a>
                               ) : (
                                 <span>{item.headline || 'Untitled headline'}</span>
                               )}
